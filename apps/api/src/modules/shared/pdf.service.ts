@@ -1,7 +1,15 @@
 import { Injectable } from "@nestjs/common";
 import fontkit from "@pdf-lib/fontkit";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFFont, PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+import { resolveWorkspacePath } from "./storage-paths";
+
+interface LoadedFont {
+  font: PDFFont;
+  supportsUnicode: boolean;
+}
 
 @Injectable()
 export class PdfService {
@@ -9,7 +17,7 @@ export class PdfService {
     const document = await PDFDocument.create();
     document.registerFontkit(fontkit);
 
-    const font = await this.loadFont(document);
+    const { font, supportsUnicode } = await this.loadFont(document);
     const pageSize: [number, number] = [595.28, 841.89];
     let page = document.addPage(pageSize);
     let cursorY = 790;
@@ -21,7 +29,7 @@ export class PdfService {
           page = document.addPage(pageSize);
           cursorY = 790;
         }
-        page.drawText(segment, {
+        page.drawText(this.toPdfSafeText(segment, supportsUnicode), {
           x: 48,
           y: cursorY,
           size,
@@ -40,23 +48,40 @@ export class PdfService {
     return Buffer.from(bytes);
   }
 
-  private async loadFont(document: PDFDocument) {
+  private async loadFont(document: PDFDocument): Promise<LoadedFont> {
+    const configuredPath = process.env.PDF_FONT_PATH?.trim();
     const candidates = [
+      configuredPath
+        ? (path.isAbsolute(configuredPath) ? configuredPath : resolveWorkspacePath(configuredPath))
+        : null,
+      resolveWorkspacePath("apps", "api", "assets", "fonts", "NotoSansSC-Regular.otf"),
       "C:\\Windows\\Fonts\\msyh.ttf",
       "C:\\Windows\\Fonts\\simhei.ttf",
-      "C:\\Windows\\Fonts\\simsun.ttc"
-    ];
+      "C:\\Windows\\Fonts\\simsun.ttc",
+      "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+      "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+      "/usr/share/fonts/opentype/noto/NotoSansSC-Regular.otf",
+      "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+      "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+      "/System/Library/Fonts/PingFang.ttc"
+    ].filter((item): item is string => Boolean(item));
 
     for (const fontPath of candidates) {
       try {
         const bytes = await readFile(fontPath);
-        return document.embedFont(bytes, { subset: true });
+        return {
+          font: await document.embedFont(bytes, { subset: true }),
+          supportsUnicode: true
+        };
       } catch {
         continue;
       }
     }
 
-    return document.embedFont(StandardFonts.Helvetica);
+    return {
+      font: await document.embedFont(StandardFonts.Helvetica),
+      supportsUnicode: false
+    };
   }
 
   private wrapText(text: string, maxChars: number): string[] {
@@ -76,5 +101,13 @@ export class PdfService {
     }
 
     return output.length ? output : [""];
+  }
+
+  private toPdfSafeText(text: string, supportsUnicode: boolean): string {
+    if (supportsUnicode) {
+      return text;
+    }
+
+    return text.replace(/[^\x20-\x7E]/g, "?");
   }
 }

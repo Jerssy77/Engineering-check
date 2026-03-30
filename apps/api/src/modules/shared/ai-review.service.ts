@@ -236,11 +236,19 @@ export class AiReviewService {
   }
 
   private getProvider(): string {
-    return (process.env.AI_PROVIDER ?? "demo").trim().toLowerCase();
+    const configured = (process.env.AI_PROVIDER ?? "auto").trim().toLowerCase();
+    if (!configured || configured === "auto") {
+      return this.hasRealModelCredentials() ? "openai" : "demo";
+    }
+    return configured;
   }
 
   private allowDemoFallback(): boolean {
     return (process.env.AI_ALLOW_DEMO_FALLBACK ?? "false").trim().toLowerCase() === "true";
+  }
+
+  private hasRealModelCredentials(): boolean {
+    return Boolean((process.env.AI_API_KEY || process.env.OPENAI_API_KEY)?.trim());
   }
 
   private getBaseUrl(): string {

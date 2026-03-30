@@ -30,6 +30,10 @@ function resolveAppPath(configured: string | undefined, fallback: string): strin
   return path.resolve(findWorkspaceRoot(process.cwd()), configured?.trim() || fallback);
 }
 
+export function resolveWorkspacePath(...parts: string[]): string {
+  return path.resolve(findWorkspaceRoot(process.cwd()), ...parts);
+}
+
 export function resolveDataFilePath(): string {
   return resolveAppPath(process.env.APP_DATA_FILE, DEFAULT_DATA_FILE);
 }

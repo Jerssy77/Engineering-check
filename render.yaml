@@ -11,7 +11,11 @@ services:
       - key: API_HOST
         value: 0.0.0.0
       - key: AI_PROVIDER
-        value: demo
+        value: auto
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL_NAME
+        sync: false
       - key: APP_TIMEZONE
         value: Asia/Shanghai
     buildFilter:
