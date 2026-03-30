@@ -1,0 +1,35 @@
+{
+  "name": "@property-review/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start:dev": "tsx watch src/main.ts",
+    "start:prod": "node dist/apps/api/src/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"Add backend tests\"",
+    "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema ../../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.0",
+    "@nestjs/core": "^10.4.0",
+    "@nestjs/platform-express": "^10.4.0",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "@property-review/shared": "file:../../packages/shared",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "multer": "^1.4.5-lts.1",
+    "pdf-lib": "^1.17.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.13.10",
+    "prisma": "^6.5.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

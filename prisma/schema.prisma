@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  submitter
+  reviewer
+  admin
+}
+
+enum OrganizationKind {
+  city_company
+  regional_hq
+  group_hq
+}
+
+enum ProjectStatus {
+  draft
+  submitted
+  ai_reviewing
+  ai_returned
+  ai_recommended_pass
+  human_approved
+  human_returned
+}
+
+enum ReviewVerdict {
+  return
+  revise
+  recommend_pass
+}
+
+enum OverrideScope {
+  weekly_quota
+  cooldown
+  both
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  kind      OrganizationKind
+  users     User[]
+  projects  Project[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id             String          @id @default(cuid())
+  username       String          @unique
+  passwordHash   String
+  displayName    String
+  role           Role
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  ownedProjects  Project[]       @relation("ProjectOwner")
+  decisions      HumanDecision[]
+  auditLogs      AuditLog[]
+  overrides      OverrideGrant[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model Project {
+  id               String           @id @default(cuid())
+  organizationId   String
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  ownerId          String
+  owner            User             @relation("ProjectOwner", fields: [ownerId], references: [id])
+  title            String
+  category         String
+  status           ProjectStatus
+  currentVersionId String?
+  currentVersion   ProjectVersion?  @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+  versions         ProjectVersion[] @relation("ProjectVersions")
+  aiReviews        AIReviewResult[]
+  attachments      Attachment[]
+  decisions        HumanDecision[]
+  overrides        OverrideGrant[]
+  quotaUsages      QuotaUsageLedger[]
+  auditLogs        AuditLog[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+model ProjectVersion {
+  id                 String          @id @default(cuid())
+  projectId          String
+  project            Project         @relation("ProjectVersions", fields: [projectId], references: [id])
+  currentForProjects Project[]       @relation("CurrentVersion")
+  versionNumber      Int
+  status             ProjectStatus
+  snapshotJson       Json
+  submittedAt        DateTime?
+  aiReviewedAt       DateTime?
+  returnedAt         DateTime?
+  createdBy          String
+  createdAt          DateTime        @default(now())
+  attachments        Attachment[]
+  aiReviews          AIReviewResult[]
+  decisions          HumanDecision[]
+
+  @@unique([projectId, versionNumber])
+}
+
+model Attachment {
+  id          String                @id @default(cuid())
+  projectId   String
+  versionId   String
+  project     Project               @relation(fields: [projectId], references: [id])
+  version     ProjectVersion        @relation(fields: [versionId], references: [id])
+  fileName    String
+  mimeType    String
+  size        Int
+  storageKey  String
+  kind        String
+  uploadedAt  DateTime              @default(now())
+  parseResult AttachmentParseResult?
+}
+
+model AttachmentParseResult {
+  id            String      @id @default(cuid())
+  attachmentId  String      @unique
+  attachment    Attachment  @relation(fields: [attachmentId], references: [id])
+  status        String
+  extractedText String?
+  summary       String?
+  failureReason String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model AIReviewResult {
+  id                    String         @id @default(cuid())
+  projectId             String
+  versionId             String
+  project               Project        @relation(fields: [projectId], references: [id])
+  version               ProjectVersion @relation(fields: [versionId], references: [id])
+  verdict               ReviewVerdict
+  recommendedPass       Boolean
+  overallScore          Int
+  dimensionScoresJson   Json
+  majorRisksJson        Json
+  missingItemsJson      Json
+  requiredRevisionsJson Json
+  optionalSuggestionsJson Json
+  attachmentReadSummaryJson Json
+  conclusion            String
+  modelName             String
+  promptVersion         String
+  generatedAt           DateTime       @default(now())
+}
+
+model HumanDecision {
+  id         String         @id @default(cuid())
+  projectId  String
+  versionId  String
+  reviewerId String
+  project    Project        @relation(fields: [projectId], references: [id])
+  version    ProjectVersion @relation(fields: [versionId], references: [id])
+  reviewer   User           @relation(fields: [reviewerId], references: [id])
+  decision   String
+  comment    String
+  decidedAt  DateTime       @default(now())
+}
+
+model QuotaPolicy {
+  id                     String   @id @default(cuid())
+  weeklyQuotaPerCity     Int
+  resubmitCooldownDays   Int
+  allowOverride          Boolean
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model QuotaUsageLedger {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  versionId      String
+  project        Project  @relation(fields: [projectId], references: [id])
+  consumedAt     DateTime @default(now())
+}
+
+model OverrideGrant {
+  id         String        @id @default(cuid())
+  projectId  String
+  grantedBy  String
+  scope      OverrideScope
+  reason     String
+  used       Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  usedAt     DateTime?
+  project    Project       @relation(fields: [projectId], references: [id])
+  granter    User          @relation(fields: [grantedBy], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  projectId  String
+  versionId  String?
+  action     String
+  detail     String
+  createdAt  DateTime @default(now())
+  actor      User     @relation(fields: [actorId], references: [id])
+  project    Project  @relation(fields: [projectId], references: [id])
+}

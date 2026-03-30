@@ -1,0 +1,23 @@
+{
+  "name": "property-engineering-review",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @property-review/web run dev",
+    "dev:api": "npm --workspace @property-review/api run start:dev",
+    "start:web": "npm --workspace @property-review/web run start",
+    "start:api": "npm --workspace @property-review/api run start:prod",
+    "build": "node scripts/build-all.mjs",
+    "lint": "npm run lint --workspaces",
+    "test": "npm run test --workspaces",
+    "prisma:generate": "npm --workspace @property-review/api run prisma:generate",
+    "prisma:migrate": "npm --workspace @property-review/api run prisma:migrate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.2"
+  }
+}

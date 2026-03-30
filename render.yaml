@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: property-review-api
+    runtime: node
+    plan: free
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:api
+    healthCheckPath: /health
+    envVars:
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: AI_PROVIDER
+        value: demo
+      - key: APP_TIMEZONE
+        value: Asia/Shanghai
+    buildFilter:
+      paths:
+        - apps/api/**
+        - packages/shared/**
+        - package.json
+        - package-lock.json
+        - tsconfig.base.json
+        - scripts/build-all.mjs
+  - type: web
+    name: property-review-web
+    runtime: node
+    plan: free
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:web
+    envVars:
+      - key: WEB_HOST
+        value: 0.0.0.0
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+    buildFilter:
+      paths:
+        - apps/web/**
+        - packages/shared/**
+        - package.json
+        - package-lock.json
+        - tsconfig.base.json
+        - scripts/build-all.mjs

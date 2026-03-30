@@ -1,0 +1,26 @@
+{
+  "name": "@property-review/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node ./scripts/run-next.mjs dev",
+    "build": "next build",
+    "start": "node ./scripts/run-next.mjs start",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"Add frontend tests\""
+  },
+  "dependencies": {
+    "@ant-design/nextjs-registry": "^1.0.2",
+    "@property-review/shared": "file:../../packages/shared",
+    "antd": "^5.23.3",
+    "next": "^15.2.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "typescript": "^5.8.2"
+  }
+}
