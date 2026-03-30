@@ -1,3 +1,6 @@
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
 import { BadRequestException, ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import {
   AttachmentKind,
@@ -8,6 +11,7 @@ import {
 } from "@property-review/shared";
 
 import { DemoDataService } from "../shared/demo-data.service";
+import { ensureDirectory, resolveUploadDirPath, sanitizeFileName } from "../shared/storage-paths";
 
 function resolveAttachmentKind(mimeType: string): AttachmentKind {
   if (mimeType.includes("pdf")) return "pdf";
@@ -15,6 +19,16 @@ function resolveAttachmentKind(mimeType: string): AttachmentKind {
   if (mimeType.includes("image")) return "image";
   if (mimeType.includes("sheet") || mimeType.includes("excel") || mimeType.includes("spreadsheet")) return "spreadsheet";
   return "other";
+}
+
+function readUploadedFile(file: Express.Multer.File): Buffer {
+  if (file.buffer?.length) {
+    return file.buffer;
+  }
+  if ("path" in file && typeof file.path === "string" && file.path) {
+    return readFileSync(file.path);
+  }
+  throw new BadRequestException(`无法读取上传文件内容：${file.originalname}`);
 }
 
 @Injectable()
@@ -65,6 +79,14 @@ export class FilesService {
         throw new BadRequestException(`${slot.label} \u4e0d\u63a5\u53d7 ${kind} \u7c7b\u578b\u6587\u4ef6`);
       }
 
+      const storageKey = path.join(
+        params.projectId,
+        `${Date.now()}-${sanitizeFileName(file.originalname)}`
+      );
+      const absolutePath = path.join(resolveUploadDirPath(), storageKey);
+      ensureDirectory(path.dirname(absolutePath));
+      writeFileSync(absolutePath, readUploadedFile(file));
+
       const attachment = this.data.createAttachment({
         projectId: params.projectId,
         versionId: params.versionId,
@@ -72,7 +94,7 @@ export class FilesService {
         fileName: file.originalname,
         mimeType: file.mimetype,
         size: file.size,
-        storageKey: `demo/${params.projectId}/${Date.now()}-${file.originalname}`,
+        storageKey,
         kind,
         uploadedAt: now
       });
@@ -113,6 +135,10 @@ export class FilesService {
     }
 
     const removed = this.data.deleteAttachment(attachmentId);
+    const absolutePath = path.join(resolveUploadDirPath(), removed.storageKey);
+    if (existsSync(absolutePath)) {
+      unlinkSync(absolutePath);
+    }
     this.data.addAuditLog({
       actorId: user.id,
       projectId: removed.projectId,

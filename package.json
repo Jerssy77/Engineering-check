@@ -14,6 +14,7 @@
     "build": "node scripts/build-all.mjs",
     "lint": "npm run lint --workspaces",
     "test": "npm run test --workspaces",
+    "data:capture-live": "node scripts/capture-live-state.mjs",
     "prisma:generate": "npm --workspace @property-review/api run prisma:generate",
     "prisma:migrate": "npm --workspace @property-review/api run prisma:migrate"
   },
