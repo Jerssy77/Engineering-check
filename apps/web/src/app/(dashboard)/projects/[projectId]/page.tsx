@@ -392,6 +392,20 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
     await load();
   };
 
+  const downloadAttachment = async (attachmentId: string, fileName: string) => {
+    try {
+      const blob = await apiRequest<Blob>(`/files/${attachmentId}/download`, {}, session);
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "附件下载失败");
+    }
+  };
+
   const downloadFaultRegistryTemplate = () => {
     window.open(buildApiUrl("/files/templates/fault-registry.xlsx"), "_blank");
   };
@@ -692,8 +706,16 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                         locale={{ emptyText: "暂无文件" }}
                         renderItem={(item) => (
                           <List.Item
-                            actions={
-                              canEdit
+                            actions={[
+                              <Button
+                                key="download"
+                                type="link"
+                                icon={<DownloadOutlined />}
+                                onClick={() => void downloadAttachment(item.id, item.fileName)}
+                              >
+                                下载
+                              </Button>,
+                              ...(canEdit
                                 ? [
                                     <Button
                                       key="delete"
@@ -703,8 +725,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                                       onClick={() => void deleteAttachment(item.id)}
                                     />
                                   ]
-                                : []
-                            }
+                                : [])
+                            ]}
                           >
                             <Space direction="vertical" size={0}>
                               <Typography.Text>{item.fileName}</Typography.Text>

@@ -24,6 +24,10 @@ services:
         value: /opt/render/project/src/runtime-data/app-state.json
       - key: APP_UPLOAD_DIR
         value: /opt/render/project/src/runtime-data/uploads
+      - key: ATTACHMENT_MAX_SIZE_BYTES
+        value: 524288
+      - key: NON_PHOTO_ATTACHMENTS_MAX_TOTAL_BYTES
+        value: 2097152
       - key: PDF_FONT_PATH
         value: /opt/render/project/src/apps/api/assets/fonts/NotoSansSC-Regular.otf
     buildFilter:

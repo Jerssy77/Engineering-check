@@ -71,6 +71,25 @@ export class FilesController {
     });
   }
 
+  @Get(":attachmentId/download")
+  download(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("attachmentId") attachmentId: string,
+    @Res() response: Response
+  ) {
+    const file = this.filesService.downloadFile(
+      attachmentId,
+      this.authService.requireSession(userId)
+    );
+
+    response.setHeader("Content-Type", file.mimeType);
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`
+    );
+    response.send(file.buffer);
+  }
+
   @Delete(":attachmentId")
   remove(@Headers("x-user-id") userId: string | undefined, @Param("attachmentId") attachmentId: string) {
     return this.filesService.deleteFile(attachmentId, this.authService.requireSession(userId));

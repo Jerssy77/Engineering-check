@@ -6,7 +6,7 @@ import {
   RollbackOutlined,
   ThunderboltOutlined
 } from "@ant-design/icons";
-import { ProjectStatus } from "@property-review/shared";
+import { ProjectStatus, VersionAttachmentSlot } from "@property-review/shared";
 import {
   Alert,
   Button,
@@ -56,6 +56,7 @@ interface ReportResponse {
     budgetGap: number;
     topCostItems: Array<{ itemName: string; specification: string; lineTotal: number }>;
   };
+  attachmentSlots: VersionAttachmentSlot[];
   review?: {
     verdict: "pass" | "conditional_pass" | "fail";
     conclusion: string;
@@ -156,6 +157,7 @@ export default function ReportPage({
       router.replace("/login");
       return;
     }
+
     setLoading(true);
     try {
       const response = await apiRequest<ReportResponse>(
@@ -175,6 +177,15 @@ export default function ReportPage({
     void load();
   }, [routeParams.projectId, routeParams.versionId]);
 
+  const triggerBlobDownload = (blob: Blob, fileName: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const downloadPdf = async () => {
     try {
       const blob = await apiRequest<Blob>(
@@ -182,14 +193,18 @@ export default function ReportPage({
         {},
         session
       );
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `ai-review-${routeParams.versionId}.pdf`;
-      anchor.click();
-      window.URL.revokeObjectURL(url);
+      triggerBlobDownload(blob, `ai-review-${routeParams.versionId}.pdf`);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "PDF 下载失败");
+    }
+  };
+
+  const downloadAttachment = async (attachmentId: string, fileName: string) => {
+    try {
+      const blob = await apiRequest<Blob>(`/files/${attachmentId}/download`, {}, session);
+      triggerBlobDownload(blob, fileName);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "附件下载失败");
     }
   };
 
@@ -208,7 +223,9 @@ export default function ReportPage({
       messageApi.success(decision === "approved" ? "版本已通过" : "版本已退回");
       await load();
     } catch (error) {
-      if (error instanceof Error) messageApi.error(error.message);
+      if (error instanceof Error) {
+        messageApi.error(error.message);
+      }
     } finally {
       setDecisionSubmitting(false);
     }
@@ -226,7 +243,9 @@ export default function ReportPage({
       messageApi.success("特批已发放");
       overrideForm.resetFields();
     } catch (error) {
-      if (error instanceof Error) messageApi.error(error.message);
+      if (error instanceof Error) {
+        messageApi.error(error.message);
+      }
     } finally {
       setOverrideSubmitting(false);
     }
@@ -245,7 +264,7 @@ export default function ReportPage({
             {report?.project.title ?? "AI 预审结论"}
           </Typography.Title>
           <Typography.Paragraph style={{ color: "#56636a", marginBottom: 0 }}>
-            结果按合规、成本、技术和重复改造识别四个维度展开，所有问题都会附带修改动作和需补充材料。
+            结论从合规、成本、技术和重复改造识别四个维度展开，并支持直接下载原始材料与 PDF 报告。
           </Typography.Paragraph>
         </Space>
       </Card>
@@ -292,15 +311,29 @@ export default function ReportPage({
                             <Space direction="vertical" size={2} style={{ width: "100%" }}>
                               <Space>
                                 <Typography.Text strong>{item.title}</Typography.Text>
-                                <Tag color={item.severity === "high" ? "red" : item.severity === "medium" ? "orange" : "blue"}>
-                                  {item.severity === "high" ? "高" : item.severity === "medium" ? "中" : "低"}
+                                <Tag
+                                  color={
+                                    item.severity === "high"
+                                      ? "red"
+                                      : item.severity === "medium"
+                                        ? "orange"
+                                        : "blue"
+                                  }
+                                >
+                                  {item.severity === "high"
+                                    ? "高"
+                                    : item.severity === "medium"
+                                      ? "中"
+                                      : "低"}
                                 </Tag>
                               </Space>
                               <Typography.Text>{`判断依据：${item.basis}`}</Typography.Text>
                               <Typography.Text>{`当前情况：${item.currentState}`}</Typography.Text>
                               <Typography.Text>{`修改动作：${item.action}`}</Typography.Text>
                               <Typography.Text type="secondary">
-                                {`需补充材料：${item.requiredMaterials.length ? item.requiredMaterials.join("、") : EMPTY_TEXT}`}
+                                {`需补充材料：${
+                                  item.requiredMaterials.length ? item.requiredMaterials.join("、") : EMPTY_TEXT
+                                }`}
                               </Typography.Text>
                             </Space>
                           </List.Item>
@@ -354,9 +387,54 @@ export default function ReportPage({
                   <Col span={24}>
                     <Card size="small" title="附件阅读摘要" style={{ borderRadius: 18 }}>
                       <List
-                        dataSource={report.review.attachmentReadSummary.length ? report.review.attachmentReadSummary : [EMPTY_TEXT]}
+                        dataSource={
+                          report.review.attachmentReadSummary.length
+                            ? report.review.attachmentReadSummary
+                            : [EMPTY_TEXT]
+                        }
                         renderItem={(item) => <List.Item>{item || EMPTY_TEXT}</List.Item>}
                       />
+                    </Card>
+                  </Col>
+                  <Col span={24}>
+                    <Card size="small" title="原始附件" style={{ borderRadius: 18 }}>
+                      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                        {report.attachmentSlots.map((slot) => (
+                          <Card
+                            key={slot.key}
+                            size="small"
+                            title={slot.label}
+                            extra={<Typography.Text type="secondary">{slot.required ? "必传" : "可选"}</Typography.Text>}
+                          >
+                            <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+                              {slot.description}
+                            </Typography.Paragraph>
+                            <List
+                              dataSource={slot.attachments}
+                              locale={{ emptyText: "暂无文件" }}
+                              renderItem={(item) => (
+                                <List.Item
+                                  actions={[
+                                    <Button
+                                      key="download"
+                                      type="link"
+                                      icon={<DownloadOutlined />}
+                                      onClick={() => void downloadAttachment(item.id, item.fileName)}
+                                    >
+                                      下载
+                                    </Button>
+                                  ]}
+                                >
+                                  <Space direction="vertical" size={0}>
+                                    <Typography.Text>{item.fileName}</Typography.Text>
+                                    <Typography.Text type="secondary">{`${Math.ceil(item.size / 1024)} KB`}</Typography.Text>
+                                  </Space>
+                                </List.Item>
+                              )}
+                            />
+                          </Card>
+                        ))}
+                      </Space>
                     </Card>
                   </Col>
                   <Col span={24}>
@@ -366,7 +444,9 @@ export default function ReportPage({
                           report.budgetSummary.topCostItems.length
                             ? report.budgetSummary.topCostItems.map(
                                 (item) =>
-                                  `${item.itemName || EMPTY_TEXT}${item.specification ? ` / ${item.specification}` : ""}：${formatCurrency(item.lineTotal)}`
+                                  `${item.itemName || EMPTY_TEXT}${
+                                    item.specification ? ` / ${item.specification}` : ""
+                                  }：${formatCurrency(item.lineTotal)}`
                               )
                             : [EMPTY_TEXT]
                         }
@@ -390,7 +470,10 @@ export default function ReportPage({
                 <Button icon={<DownloadOutlined />} onClick={downloadPdf} block>
                   下载 PDF
                 </Button>
-                <Button block onClick={() => startTransition(() => router.push(`/projects/${routeParams.projectId}`))}>
+                <Button
+                  block
+                  onClick={() => startTransition(() => router.push(`/projects/${routeParams.projectId}`))}
+                >
                   返回立项详情
                 </Button>
               </Space>
@@ -444,7 +527,7 @@ export default function ReportPage({
               <Card className="glass-card" loading={loading} styles={{ body: { padding: 22 } }}>
                 <Typography.Title level={4}>一次性特批</Typography.Title>
                 <Typography.Paragraph type="secondary">
-                  当城市公司因额度或冷却期被拦截，且项目需要紧急推进时，可在此发起一次性放行。
+                  当城市公司因额度或冷却期被拦截，但项目需要紧急推进时，可在此发起一次性放行。
                 </Typography.Paragraph>
                 <Form form={overrideForm} layout="vertical">
                   <Form.Item

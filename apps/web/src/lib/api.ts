@@ -63,7 +63,10 @@ export async function apiRequest<T>(
     throw new ApiError(await extractMessage(response), response.status);
   }
 
-  if (response.headers.get("Content-Type")?.includes("application/pdf")) {
+  const contentType = response.headers.get("Content-Type") ?? "";
+  const contentDisposition = response.headers.get("Content-Disposition") ?? "";
+
+  if (contentDisposition.includes("attachment") || !contentType.includes("application/json")) {
     return (await response.blob()) as T;
   }
 
