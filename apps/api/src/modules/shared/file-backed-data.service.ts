@@ -23,6 +23,7 @@ import {
 import { DemoDataService } from "./demo-data.service";
 import {
   ensureDirectory,
+  normalizeLatin1Utf8Text,
   readJsonFile,
   resolveDataFilePath,
   resolveUploadDirPath,
@@ -65,6 +66,25 @@ function normalizeState(raw: Partial<StoreState> | undefined): StoreState {
   };
 }
 
+function repairMojibake<T>(value: T, parentKey?: string): T {
+  if (typeof value === "string") {
+    return (parentKey === "storageKey" ? value : normalizeLatin1Utf8Text(value)) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => repairMojibake(item)) as T;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [key, repairMojibake(nestedValue, key)])
+    ) as T;
+  }
+  return value;
+}
+
+function repairStateText(state: StoreState): StoreState {
+  return repairMojibake(state);
+}
+
 function buildSeedState(): StoreState {
   const seed = new DemoDataService();
   const projects = seed.listProjects();
@@ -97,8 +117,12 @@ export class FileBackedDataService {
   }
 
   private loadState(): StoreState {
-    const loaded = normalizeState(readJsonFile<Partial<StoreState>>(this.dataFilePath));
+    const rawState = normalizeState(readJsonFile<Partial<StoreState>>(this.dataFilePath));
+    const loaded = repairStateText(rawState);
     if (existsSync(this.dataFilePath)) {
+      if (JSON.stringify(rawState) !== JSON.stringify(loaded)) {
+        writeJsonAtomic(this.dataFilePath, loaded);
+      }
       return loaded;
     }
 
@@ -245,6 +269,18 @@ export class FileBackedDataService {
     return created;
   }
 
+  removeQuotaUsage(projectId: string, versionId: string): void {
+    const nextLedger = this.state.quotaLedger.filter(
+      (item) => item.projectId !== projectId || item.versionId !== versionId
+    );
+    if (nextLedger.length === this.state.quotaLedger.length) {
+      return;
+    }
+
+    this.state.quotaLedger = nextLedger;
+    this.persist();
+  }
+
   addOverride(overrideRecord: Omit<OverrideGrant, "id">): OverrideGrant {
     const created: OverrideGrant = { ...overrideRecord, id: createId("override") };
     this.state.overrides.push(created);
@@ -256,6 +292,15 @@ export class FileBackedDataService {
     const index = this.state.overrides.findIndex((item) => item.id === overrideId);
     if (index < 0) throw new NotFoundException("特批记录不存在");
     const updated = { ...this.state.overrides[index], used: true, usedAt };
+    this.state.overrides[index] = updated;
+    this.persist();
+    return updated;
+  }
+
+  releaseOverride(overrideId: string): OverrideGrant {
+    const index = this.state.overrides.findIndex((item) => item.id === overrideId);
+    if (index < 0) throw new NotFoundException("Override record not found");
+    const updated = { ...this.state.overrides[index], used: false, usedAt: undefined };
     this.state.overrides[index] = updated;
     this.persist();
     return updated;

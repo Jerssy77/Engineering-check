@@ -69,3 +69,16 @@ export function sanitizeFileName(fileName: string): string {
   const sanitized = fileName.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").trim();
   return sanitized || "file";
 }
+
+export function normalizeLatin1Utf8Text(value: string): string {
+  if (!value || /[\u4E00-\u9FFF]/u.test(value) || !/[\u00C0-\u024F]/u.test(value)) {
+    return value;
+  }
+
+  try {
+    const normalized = Buffer.from(value, "latin1").toString("utf8");
+    return normalized.includes("\uFFFD") ? value : normalized;
+  } catch {
+    return value;
+  }
+}

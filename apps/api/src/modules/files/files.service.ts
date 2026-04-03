@@ -11,7 +11,12 @@ import {
 } from "@property-review/shared";
 
 import { DemoDataService } from "../shared/demo-data.service";
-import { ensureDirectory, resolveUploadDirPath, sanitizeFileName } from "../shared/storage-paths";
+import {
+  ensureDirectory,
+  normalizeLatin1Utf8Text,
+  resolveUploadDirPath,
+  sanitizeFileName
+} from "../shared/storage-paths";
 
 function resolveAttachmentKind(mimeType: string): AttachmentKind {
   if (mimeType.includes("pdf")) return "pdf";
@@ -74,6 +79,7 @@ export class FilesService {
 
     const now = new Date().toISOString();
     const createdAttachments = params.files.map((file) => {
+      const normalizedFileName = normalizeLatin1Utf8Text(file.originalname);
       const kind = resolveAttachmentKind(file.mimetype);
       if (!slot.acceptedKinds.includes(kind)) {
         throw new BadRequestException(`${slot.label} \u4e0d\u63a5\u53d7 ${kind} \u7c7b\u578b\u6587\u4ef6`);
@@ -81,7 +87,7 @@ export class FilesService {
 
       const storageKey = path.join(
         params.projectId,
-        `${Date.now()}-${sanitizeFileName(file.originalname)}`
+        `${Date.now()}-${sanitizeFileName(normalizedFileName)}`
       );
       const absolutePath = path.join(resolveUploadDirPath(), storageKey);
       ensureDirectory(path.dirname(absolutePath));
@@ -91,7 +97,7 @@ export class FilesService {
         projectId: params.projectId,
         versionId: params.versionId,
         slotKey: params.slotKey,
-        fileName: file.originalname,
+        fileName: normalizedFileName,
         mimeType: file.mimetype,
         size: file.size,
         storageKey,
@@ -103,8 +109,8 @@ export class FilesService {
       this.data.createParseResult({
         attachmentId: attachment.id,
         status: canParse ? "completed" : "failed",
-        extractedText: canParse ? `\u5df2\u4ece ${file.originalname} \u63d0\u53d6\u9644\u4ef6\u6458\u8981` : undefined,
-        summary: canParse ? `${slot.label}\uff1a${file.originalname} \u5df2\u7eb3\u5165 AI \u5ba1\u6838\u3002` : undefined,
+        extractedText: canParse ? `\u5df2\u4ece ${normalizedFileName} \u63d0\u53d6\u9644\u4ef6\u6458\u8981` : undefined,
+        summary: canParse ? `${slot.label}\uff1a${normalizedFileName} \u5df2\u7eb3\u5165 AI \u5ba1\u6838\u3002` : undefined,
         failureReason: canParse ? undefined : `\u6682\u4e0d\u652f\u6301\u89e3\u6790 ${file.mimetype}`
       });
 

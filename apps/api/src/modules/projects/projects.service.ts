@@ -3,7 +3,8 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  OnModuleInit
 } from "@nestjs/common";
 import {
   AIReviewResult,
@@ -78,13 +79,28 @@ function mergeSnapshot(snapshot: FormSnapshot, dto: UpdateVersionDto): FormSnaps
   };
 }
 
+interface PendingAiReviewJob {
+  actorId: string;
+  organizationId: string;
+  overrideId?: string;
+  projectId: string;
+  submittedAt: string;
+  versionId: string;
+}
+
 @Injectable()
-export class ProjectsService {
+export class ProjectsService implements OnModuleInit {
+  private readonly activeAiReviewJobs = new Set<string>();
+
   constructor(
     @Inject(DemoDataService) private readonly data: DemoDataService,
     @Inject(AiReviewService) private readonly aiReviewService: AiReviewService,
     @Inject(PdfService) private readonly pdfService: PdfService
   ) {}
+
+  onModuleInit(): void {
+    this.resumePendingAiReviews();
+  }
 
   listProjects(user: SessionUser) {
     const organizations = this.data.getOrganizations();
@@ -297,6 +313,15 @@ export class ProjectsService {
     }
 
     const now = new Date().toISOString();
+    const job: PendingAiReviewJob = {
+      actorId: user.id,
+      organizationId: aggregate.project.organizationId,
+      overrideId: eligibility.availableOverrideId,
+      projectId,
+      submittedAt: now,
+      versionId: version.id
+    };
+    this.reserveAiSubmissionResources(job);
     const submitted = this.data.updateVersion(version.id, (current) => ({
       ...current,
       status: "ai_reviewing",
@@ -318,42 +343,7 @@ export class ProjectsService {
       detail: eligibility.availableOverrideId ? "已使用特批发起 AI 预审。" : "已发起 AI 预审。",
       createdAt: now
     });
-
-    try {
-      await this.processAiReview(projectId, submitted);
-    } catch (error) {
-      this.data.updateVersion(version.id, (current) => ({
-        ...current,
-        status: "draft",
-        submittedAt: undefined
-      }));
-      this.data.updateProject(projectId, (current) => ({
-        ...current,
-        status: "draft",
-        currentVersionId: version.id,
-        updatedAt: new Date().toISOString()
-      }));
-      this.data.addAuditLog({
-        actorId: user.id,
-        projectId,
-        versionId: version.id,
-        action: "ai_review_failed",
-        detail: error instanceof Error ? error.message : "AI 审核调用失败。",
-        createdAt: new Date().toISOString()
-      });
-      throw error;
-    }
-
-    this.data.addQuotaUsage({
-      organizationId: aggregate.project.organizationId,
-      projectId,
-      versionId: submitted.id,
-      consumedAt: now
-    });
-
-    if (eligibility.availableOverrideId) {
-      this.data.markOverrideUsed(eligibility.availableOverrideId, now);
-    }
+    this.scheduleAiReview({ ...job, versionId: submitted.id });
 
     return this.getProjectDetail(projectId, user);
   }
@@ -463,6 +453,134 @@ export class ProjectsService {
     return this.pdfService.createReportPdf("物业工程立项 AI 审核报告", lines);
   }
 
+  private resumePendingAiReviews(): void {
+    this.data
+      .listProjects()
+      .filter((project) => project.status === "ai_reviewing")
+      .forEach((project) => {
+        const version = this.data
+          .listVersions(project.id)
+          .find((item) => item.id === project.currentVersionId && item.status === "ai_reviewing");
+        if (!version) {
+          return;
+        }
+
+        const resumedSubmittedAt = version.submittedAt ?? project.updatedAt;
+        const overrideId = this.data
+          .listOverrides(project.id)
+          .find((item) => item.used && item.usedAt === resumedSubmittedAt)
+          ?.id;
+        this.scheduleAiReview({
+          actorId: version.createdBy,
+          organizationId: project.organizationId,
+          overrideId,
+          projectId: project.id,
+          submittedAt: resumedSubmittedAt,
+          versionId: version.id
+        });
+      });
+  }
+
+  private scheduleAiReview(job: PendingAiReviewJob): void {
+    const jobKey = `${job.projectId}:${job.versionId}`;
+    if (this.activeAiReviewJobs.has(jobKey)) {
+      return;
+    }
+
+    this.activeAiReviewJobs.add(jobKey);
+    setImmediate(() => {
+      void this.runAiReviewJob(job).finally(() => {
+        this.activeAiReviewJobs.delete(jobKey);
+      });
+    });
+  }
+
+  private async runAiReviewJob(job: PendingAiReviewJob): Promise<void> {
+    const aggregate = this.data.getAggregate(job.projectId);
+    const version = aggregate.versions.find((item) => item.id === job.versionId);
+    if (!version || version.status !== "ai_reviewing" || aggregate.project.currentVersionId !== job.versionId) {
+      return;
+    }
+
+    try {
+      this.reserveAiSubmissionResources(job);
+      const existingReview = aggregate.aiReviews.find((item) => item.versionId === job.versionId);
+      if (existingReview) {
+        this.finalizeAiReview(job.projectId, version, existingReview);
+      } else {
+        await this.processAiReview(job.projectId, version);
+      }
+    } catch (error) {
+      this.resetFailedAiReview(job, error);
+    }
+  }
+
+  private reserveAiSubmissionResources(job: PendingAiReviewJob): void {
+    const alreadyConsumed = this.data
+      .listQuotaLedger()
+      .some((entry) => entry.projectId === job.projectId && entry.versionId === job.versionId);
+    if (!alreadyConsumed) {
+      this.data.addQuotaUsage({
+        organizationId: job.organizationId,
+        projectId: job.projectId,
+        versionId: job.versionId,
+        consumedAt: job.submittedAt
+      });
+    }
+
+    if (!job.overrideId) {
+      return;
+    }
+
+    const override = this.data.listOverrides().find((item) => item.id === job.overrideId);
+    if (override && !override.used) {
+      this.data.markOverrideUsed(job.overrideId, job.submittedAt);
+    }
+  }
+
+  private releaseAiSubmissionResources(job: PendingAiReviewJob): void {
+    this.data.removeQuotaUsage(job.projectId, job.versionId);
+
+    if (!job.overrideId) {
+      return;
+    }
+
+    const override = this.data.listOverrides().find((item) => item.id === job.overrideId);
+    if (override?.used) {
+      this.data.releaseOverride(job.overrideId);
+    }
+  }
+
+  private resetFailedAiReview(job: PendingAiReviewJob, error: unknown): void {
+    const aggregate = this.data.getAggregate(job.projectId);
+    const version = aggregate.versions.find((item) => item.id === job.versionId);
+    if (!version || version.status !== "ai_reviewing") {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    this.releaseAiSubmissionResources(job);
+    this.data.updateVersion(job.versionId, (current) => ({
+      ...current,
+      status: "draft",
+      submittedAt: undefined
+    }));
+    this.data.updateProject(job.projectId, (current) => ({
+      ...current,
+      status: "draft",
+      currentVersionId: job.versionId,
+      updatedAt: now
+    }));
+    this.data.addAuditLog({
+      actorId: job.actorId,
+      projectId: job.projectId,
+      versionId: job.versionId,
+      action: "ai_review_failed",
+      detail: error instanceof Error ? error.message : "AI review failed.",
+      createdAt: now
+    });
+  }
+
   humanDecision(projectId: string, versionId: string, user: SessionUser, dto: HumanDecisionDto) {
     if (user.role === "submitter") {
       throw new ForbiddenException("只有终审人或管理员才能执行终审");
@@ -549,6 +667,32 @@ export class ProjectsService {
       versionId: version.id,
       action: "ai_review_complete",
       detail: `AI 结论：${VERDICT_LABELS[review.verdict]}。`,
+      createdAt: now
+    });
+
+    return review;
+  }
+
+  private finalizeAiReview(projectId: string, version: ProjectVersion, review: AIReviewResult): AIReviewResult {
+    const now = new Date().toISOString();
+    const nextStatus = this.mapVerdictToStatus(review.verdict);
+    this.data.updateVersion(version.id, (current) => ({
+      ...current,
+      status: nextStatus,
+      aiReviewedAt: current.aiReviewedAt ?? review.generatedAt ?? now,
+      returnedAt: nextStatus === "ai_returned" ? current.returnedAt ?? now : current.returnedAt
+    }));
+    this.data.updateProject(projectId, (current) => ({
+      ...current,
+      status: nextStatus,
+      updatedAt: now
+    }));
+    this.data.addAuditLog({
+      actorId: version.createdBy,
+      projectId,
+      versionId: version.id,
+      action: "ai_review_complete",
+      detail: `AI review completed: ${VERDICT_LABELS[review.verdict]}`,
       createdAt: now
     });
 

@@ -74,7 +74,7 @@ interface ProjectDetailResponse {
   project: { id: string; title: string; status: ProjectStatus; currentVersionId: string };
   versions: VersionDetail[];
   aiReviews: Array<{ versionId: string; conclusion: string }>;
-  auditLogs: Array<{ id: string; action: string; detail: string; createdAt: string }>;
+  auditLogs: Array<{ id: string; versionId?: string; action: string; detail: string; createdAt: string }>;
   eligibility: {
     allowed: boolean;
     remainingWeeklyQuota: number;
@@ -202,23 +202,33 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
   const [form] = Form.useForm<FormSnapshot>();
   const session = getSession();
 
-  const load = async () => {
+  const applyDetailResponse = (response: ProjectDetailResponse) => {
+    setDetail(response);
+    const current = response.versions.find((item) => item.id === response.project.currentVersionId) ?? response.versions[0];
+    if (current) {
+      form.setFieldsValue(current.snapshot);
+    }
+  };
+
+  const load = async (options?: { background?: boolean; suppressErrors?: boolean }) => {
     if (!session) {
       router.replace("/login");
       return;
     }
-    setLoading(true);
+    if (!options?.background) {
+      setLoading(true);
+    }
     try {
       const response = await apiRequest<ProjectDetailResponse>(`/projects/${routeParams.projectId}`, {}, session);
-      setDetail(response);
-      const current = response.versions.find((item) => item.id === response.project.currentVersionId) ?? response.versions[0];
-      if (current) {
-        form.setFieldsValue(current.snapshot);
-      }
+      applyDetailResponse(response);
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "项目加载失败");
+      if (!options?.suppressErrors) {
+        messageApi.error(error instanceof Error ? error.message : "项目加载失败");
+      }
     } finally {
-      setLoading(false);
+      if (!options?.background) {
+        setLoading(false);
+      }
     }
   };
 
@@ -226,10 +236,33 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
     void load();
   }, [routeParams.projectId]);
 
+  useEffect(() => {
+    if (detail?.project.status !== "ai_reviewing") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void load({ background: true, suppressErrors: true });
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [detail?.project.status, routeParams.projectId]);
+
   const currentVersion = useMemo(
     () => detail?.versions.find((item) => item.id === detail.project.currentVersionId) ?? detail?.versions[0],
     [detail]
   );
+  const currentVersionLatestLog = useMemo(() => {
+    if (!detail || !currentVersion) {
+      return undefined;
+    }
+
+    return detail.auditLogs.find((item) => item.versionId === currentVersion.id);
+  }, [currentVersion, detail]);
+  const currentVersionFailureLog =
+    currentVersion?.status === "draft" && currentVersionLatestLog?.action === "ai_review_failed"
+      ? currentVersionLatestLog
+      : undefined;
   const canEdit = session?.user.role === "submitter" && currentVersion?.status === "draft";
   const watchedBudget = Form.useWatch("budgetAmount", form);
   const watchedCostRows = Form.useWatch("costMatrixRows", form);
@@ -243,17 +276,22 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
     [form, watchedBudget, watchedCostRows]
   );
 
-  const saveDraft = async (values: FormSnapshot) => {
+  const patchCurrentVersion = async (values: FormSnapshot) => {
     if (!currentVersion) return;
+    const response = await apiRequest<ProjectDetailResponse>(
+      `/projects/${routeParams.projectId}/versions/${currentVersion.id}`,
+      { method: "PATCH", body: JSON.stringify(values) },
+      session
+    );
+    applyDetailResponse(response);
+    return response;
+  };
+
+  const saveDraft = async (values: FormSnapshot) => {
     setSaving(true);
     try {
-      await apiRequest(
-        `/projects/${routeParams.projectId}/versions/${currentVersion.id}`,
-        { method: "PATCH", body: JSON.stringify(values) },
-        session
-      );
+      await patchCurrentVersion(values);
       messageApi.success("草稿已保存");
-      await load();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "保存失败");
     } finally {
@@ -263,17 +301,27 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
 
   const submit = async () => {
     if (!currentVersion) return;
+    if (uploadingKey) {
+      messageApi.warning("请等待附件上传完成后再提交 AI 预审");
+      return;
+    }
     setSubmitting(true);
     try {
-      await apiRequest(
+      await form.validateFields();
+      await patchCurrentVersion(form.getFieldsValue(true) as FormSnapshot);
+      const response = await apiRequest<ProjectDetailResponse>(
         `/projects/${routeParams.projectId}/submit`,
         { method: "POST", body: JSON.stringify({ versionId: currentVersion.id }) },
         session
       );
-      messageApi.success("AI 预审已发起");
-      await load();
+      applyDetailResponse(response);
+      messageApi.success("AI 预审已发起，系统正在后台处理，页面会自动刷新");
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "提交失败");
+      if (error && typeof error === "object" && "errorFields" in error) {
+        messageApi.error("请先补全必填信息再提交 AI 预审");
+      } else {
+        messageApi.error(error instanceof Error ? error.message : "提交失败");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -288,9 +336,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
   const retryReview = async () => {
     setSubmitting(true);
     try {
-      await apiRequest(`/projects/${routeParams.projectId}/ai-review/retry`, { method: "POST" }, session);
-      messageApi.success("AI 预审已重新发起");
-      await load();
+      const response = await apiRequest<ProjectDetailResponse>(
+        `/projects/${routeParams.projectId}/ai-review/retry`,
+        { method: "POST" },
+        session
+      );
+      applyDetailResponse(response);
+      messageApi.success("AI 预审已重新发起，系统正在后台处理");
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "重新送审失败");
     } finally {
@@ -383,6 +435,15 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                     ? "当前项目已有可用特批。"
                     : "提交时后端会再次校验额度、冷却期、矩阵金额和必传材料。"
                 }
+                style={{ marginBottom: 18, borderRadius: 18 }}
+              />
+            )}
+            {currentVersionFailureLog && (
+              <Alert
+                type="error"
+                showIcon
+                message="AI 预审未完成"
+                description={`${currentVersionFailureLog.detail}。请检查草稿内容后重新提交。`}
                 style={{ marginBottom: 18, borderRadius: 18 }}
               />
             )}
@@ -682,6 +743,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                     type="primary"
                     ghost
                     icon={<RocketOutlined />}
+                    disabled={Boolean(uploadingKey) || saving}
                     loading={submitting}
                     onClick={submit}
                   >

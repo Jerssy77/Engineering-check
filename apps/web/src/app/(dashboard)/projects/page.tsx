@@ -117,28 +117,46 @@ export default function ProjectsPage() {
   const session = getSession();
   const isSubmitter = session?.user.role === "submitter";
 
-  const load = async () => {
+  const load = async (options?: { background?: boolean; suppressErrors?: boolean }) => {
     if (!session) {
       router.replace("/login");
       return;
     }
 
-    setLoading(true);
+    if (!options?.background) {
+      setLoading(true);
+    }
     try {
       const projectData = await apiRequest<ProjectRow[]>("/projects", {}, session);
       const quotaData = isSubmitter ? await apiRequest<QuotaInfo>("/quota/me", {}, session) : null;
       setProjects(projectData);
       setQuota(quotaData);
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "\u7acb\u9879\u5217\u8868\u52a0\u8f7d\u5931\u8d25");
+      if (!options?.suppressErrors) {
+        messageApi.error(error instanceof Error ? error.message : "\u7acb\u9879\u5217\u8868\u52a0\u8f7d\u5931\u8d25");
+      }
     } finally {
-      setLoading(false);
+      if (!options?.background) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!projects.some((item) => item.status === "ai_reviewing")) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void load({ background: true, suppressErrors: true });
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [projects]);
 
   const createProject = async (values: CreateProjectForm) => {
     if (!isSubmitter) {

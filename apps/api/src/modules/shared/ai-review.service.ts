@@ -268,8 +268,8 @@ export class AiReviewService {
   }
 
   private getTimeoutMs(): number {
-    const timeout = Number(process.env.AI_API_TIMEOUT_MS || 60000);
-    return Number.isFinite(timeout) && timeout > 0 ? timeout : 60000;
+    const timeout = Number(process.env.AI_API_TIMEOUT_MS || 120000);
+    return Number.isFinite(timeout) && timeout > 0 ? timeout : 120000;
   }
 
   private async requestOpenAiCompatibleReview(

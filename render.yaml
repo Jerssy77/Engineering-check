@@ -2,7 +2,7 @@ services:
   - type: web
     name: property-review-api
     runtime: node
-    plan: free
+    plan: starter
     autoDeployTrigger: commit
     buildCommand: npm ci && npm run build
     startCommand: npm run start:api
@@ -16,8 +16,16 @@ services:
         sync: false
       - key: AI_MODEL_NAME
         sync: false
+      - key: AI_API_TIMEOUT_MS
+        value: 120000
       - key: APP_TIMEZONE
         value: Asia/Shanghai
+      - key: APP_DATA_FILE
+        value: /opt/render/project/src/runtime-data/app-state.json
+      - key: APP_UPLOAD_DIR
+        value: /opt/render/project/src/runtime-data/uploads
+      - key: PDF_FONT_PATH
+        value: /opt/render/project/src/apps/api/assets/fonts/NotoSansSC-Regular.otf
     buildFilter:
       paths:
         - apps/api/**

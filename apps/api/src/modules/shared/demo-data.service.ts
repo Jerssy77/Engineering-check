@@ -323,12 +323,25 @@ export class DemoDataService {
   }
 
   addQuotaUsage(entry: Omit<QuotaUsageLedger, "id">): QuotaUsageLedger { const created: QuotaUsageLedger = { ...entry, id: createId("quota") }; this.state.quotaLedger.push(created); return created; }
+  removeQuotaUsage(projectId: string, versionId: string): void {
+    this.state.quotaLedger = this.state.quotaLedger.filter(
+      (item) => item.projectId !== projectId || item.versionId !== versionId
+    );
+  }
   addOverride(overrideRecord: Omit<OverrideGrant, "id">): OverrideGrant { const created: OverrideGrant = { ...overrideRecord, id: createId("override") }; this.state.overrides.push(created); return created; }
 
   markOverrideUsed(overrideId: string, usedAt: string): OverrideGrant {
     const index = this.state.overrides.findIndex((item) => item.id === overrideId);
     if (index < 0) throw new NotFoundException("特批记录不存在");
     const updated = { ...this.state.overrides[index], used: true, usedAt };
+    this.state.overrides[index] = updated;
+    return updated;
+  }
+
+  releaseOverride(overrideId: string): OverrideGrant {
+    const index = this.state.overrides.findIndex((item) => item.id === overrideId);
+    if (index < 0) throw new NotFoundException("特批记录不存在");
+    const updated = { ...this.state.overrides[index], used: false, usedAt: undefined };
     this.state.overrides[index] = updated;
     return updated;
   }
