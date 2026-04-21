@@ -618,6 +618,8 @@ export class AiReviewService {
                 "没有明确规范依据的风险、优化建议或补充问题，一律降级为 advisoryRecommendations 或 advisoryItems。",
                 "成本审核不能只说参考市场价或历史价，要先理解方案意图，再识别冗余、过度配置、重复投入、可替代路径和施工组织优化空间；允许给经验区间，但必须标注需人工复核。",
                 "技术审核要判断路线是否闭环、是否过度、是否缺关键实施约束，并允许生成候选改写段落。",
+                "当前审核阶段是工程立项预审，不是招标后深化设计审查；不得仅因缺少完整施工图、招标深度施工图或详细节点大样判定不通过。",
+                "立项阶段可以要求现状照片、范围示意、关键点位清单、边界说明、隐蔽验收和后续深化安排；详细节点做法应作为通过立项后的招采/施工深化要求。",
                 "国家规范强制项自动写回；建议项只能进入 advisoryWritebackCandidates，并明确需要人工勾选确认后才写入成果物。",
                 "AI 作为专家预审应从严判断：安全/合规缺口、预算不一致、关键材料缺失、技术路线不闭环时可直接 verdict=fail。",
                 "只输出 JSON，不要输出 Markdown，不要输出解释性前缀。"
@@ -647,6 +649,7 @@ export class AiReviewService {
                 "duplicateReview.matches 只能基于输入 duplicateCandidates，不得虚构新项目。",
                 "如果没有明确 citationIds，不得生成 mandatoryItems，也不得把内容写进 schemeWritebacks。",
                 "平台审批口径、预算一致性、资料完整性、技术闭环等内容只能放入 internalControlRequirements 或 advisoryRecommendations。",
+                "缺少详细施工图、节点详图、招标深度大样图本身不能作为 internalControlRequirements 或 fail 的理由；如确需提示，只能写成后续深化建议或施工前控制要求。",
                 "",
                 stringifyPromptInput(params, normContext, skillPackContext)
               ].join("\n")

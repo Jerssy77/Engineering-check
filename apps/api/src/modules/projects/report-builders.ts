@@ -410,8 +410,8 @@ function buildFeasibilityRiskControls(
       ? `样板先行控制：${normalizeSentence(snapshot.sampleFirstRequirement)}`
       : "同类重复施工内容宜先完成样板或首件确认，再组织批量实施。",
     snapshot.detailDrawingRequirement
-      ? `节点详图控制：${normalizeSentence(snapshot.detailDrawingRequirement)}`
-      : "涉及接口、管线、设备基础、联动控制或防火封堵等关键节点，应补充节点做法或现场确认记录。",
+      ? `关键节点深化安排：${normalizeSentence(snapshot.detailDrawingRequirement)}`
+      : "立项阶段不强制提供招标深度施工图或详细节点大样；涉及接口、管线、设备基础、联动控制或防火封堵等关键节点的，应在招采或施工深化阶段形成做法确认、现场照片和验收记录。",
     snapshot.thirdPartyTestingRequirement
       ? `检测要求：${normalizeSentence(snapshot.thirdPartyTestingRequirement)}`
       : "如涉及消防、承压、用电安全、结构安全或系统性能验证，应按审批意见确定是否委托第三方检测。",
@@ -852,7 +852,7 @@ export function buildConstructionPlan(context: ReportContext): ConstructionPlanP
     snapshot.acceptancePlan ? `验收标准：${normalizeSentence(snapshot.acceptancePlan)}` : "验收标准应覆盖功能恢复、施工质量、观感质量、运行稳定性和资料完整性。",
     snapshot.hiddenWorksRequirement ? `隐蔽工程：${normalizeSentence(snapshot.hiddenWorksRequirement)}` : "隐蔽工程应执行隐蔽前检查确认，留存照片和验收记录后方可封闭。",
     snapshot.sampleFirstRequirement ? `样板先行：${normalizeSentence(snapshot.sampleFirstRequirement)}` : "同类重复作业宜执行首件确认或样板先行，确认后再批量展开。",
-    snapshot.detailDrawingRequirement ? `节点详图：${normalizeSentence(snapshot.detailDrawingRequirement)}` : "关键节点应形成现场确认图、节点照片或做法记录，确保后续验收和运维可追溯。",
+    snapshot.detailDrawingRequirement ? `关键节点深化安排：${normalizeSentence(snapshot.detailDrawingRequirement)}` : "立项阶段不以完整施工图或详细节点大样作为前置条件；开工前应由中标单位或专业单位完善关键节点做法确认、现场记录和验收留档要求。",
     ...mandatoryRequirements.map((item) => item.writebackText || item.requirement),
     ...internalControlRequirements.map((item) => item.writebackText || item.action),
     ...adoptedWritebacks.map((item) => item.text)
@@ -888,7 +888,7 @@ export function buildConstructionPlan(context: ReportContext): ConstructionPlanP
     scope: buildConstructionScope(snapshot, projectName),
     preparation: nonEmptyLines([
       "组织施工单位、申报单位、物业运营和必要供应商完成现场踏勘，确认施工边界、作业窗口和影响范围。",
-      "复核审批通过的工程量清单、材料设备规格、施工图或节点做法，形成开工前确认记录。",
+      "复核审批通过的工程量清单、材料设备规格、关键节点做法和后续深化资料，形成开工前确认记录。",
       "完成材料设备进场计划、堆放区域、运输路线、垃圾清运和成品保护方案。",
       "向受影响区域完成施工告知，明确施工时间、影响事项、应急联系人和投诉响应方式。",
       snapshot.issueSourceDescription ? `问题来源补充说明：${normalizeSentence(snapshot.issueSourceDescription)}` : undefined

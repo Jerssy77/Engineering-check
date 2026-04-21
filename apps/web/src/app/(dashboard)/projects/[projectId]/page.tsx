@@ -46,7 +46,7 @@ import {
 } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 
 import { StatusTag } from "../../../../components/status-tag";
 import { apiRequest, buildApiUrl } from "../../../../lib/api";
@@ -199,6 +199,38 @@ function buildBudgetSummary(values?: Partial<FormSnapshot>): BudgetSummary {
   });
 }
 
+function mergeFormSnapshot(
+  previous: Partial<FormSnapshot>,
+  next: Partial<FormSnapshot>
+): Partial<FormSnapshot> {
+  const location = {
+    propertyName: "",
+    building: "",
+    floor: "",
+    area: "",
+    room: "",
+    equipmentPoint: "",
+    impactScope: "",
+    ...previous.location,
+    ...next.location
+  };
+
+  return {
+    ...previous,
+    ...next,
+    location,
+    riskFlags: {
+      ...previous.riskFlags,
+      ...next.riskFlags
+    },
+    categorySpecificFields: {
+      ...previous.categorySpecificFields,
+      ...next.categorySpecificFields
+    },
+    costMatrixRows: next.costMatrixRows ?? previous.costMatrixRows
+  };
+}
+
 function getFileAccept(slotKey: string): string | undefined {
   if (slotKey === "issue_photos") return "image/*";
   if (slotKey === "fault_registry") return ".xls,.xlsx,.csv";
@@ -276,22 +308,21 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [downloadingConstructionPlan, setDownloadingConstructionPlan] = useState(false);
   const [detail, setDetail] = useState<ProjectDetailResponse | null>(null);
+  const [liveSnapshot, setLiveSnapshot] = useState<Partial<FormSnapshot>>({});
   const [currentStep, setCurrentStep] = useState(0);
   const [form] = Form.useForm<FormSnapshot>();
   const session = getSession();
 
   const watchedProjectName = Form.useWatch("projectName", form);
   const watchedProjectCategory = Form.useWatch("projectCategory", form) as ProjectCategory | undefined;
-  const watchedBudget = Form.useWatch("budgetAmount", form);
-  const watchedCostRows = Form.useWatch("costMatrixRows", form) ?? [];
   const watchedLocation = Form.useWatch("location", form);
-  const deferredCostRows = useDeferredValue(watchedCostRows);
 
   const applyDetailResponse = (response: ProjectDetailResponse) => {
     setDetail(response);
     const current = response.versions.find((item) => item.id === response.project.currentVersionId) ?? response.versions[0];
     if (current) {
       form.setFieldsValue(current.snapshot);
+      setLiveSnapshot(current.snapshot);
     }
   };
 
@@ -352,31 +383,24 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
 
   const canEdit = session?.user.role === "submitter" && currentVersion?.status === "draft";
 
-  const liveBudgetSummary = useMemo(
-    () =>
-      buildBudgetSummary({
-        ...form.getFieldsValue(true),
-        budgetAmount: watchedBudget,
-        costMatrixRows: deferredCostRows
-      }),
-    [deferredCostRows, form, watchedBudget]
-  );
+  const liveBudgetSummary = useMemo(() => buildBudgetSummary(liveSnapshot), [liveSnapshot]);
 
   const liveLocationSummary = useMemo(() => {
-    if (!watchedLocation) {
+    const location = watchedLocation ?? liveSnapshot.location;
+    if (!location) {
       return currentVersion ? summarizeLocation(currentVersion.snapshot.location) : "待补充";
     }
 
     return summarizeLocation({
-      propertyName: watchedLocation.propertyName ?? "",
-      building: watchedLocation.building ?? "",
-      floor: watchedLocation.floor ?? "",
-      area: watchedLocation.area ?? "",
-      room: watchedLocation.room ?? "",
-      equipmentPoint: watchedLocation.equipmentPoint ?? "",
-      impactScope: watchedLocation.impactScope ?? ""
+      propertyName: location.propertyName ?? "",
+      building: location.building ?? "",
+      floor: location.floor ?? "",
+      area: location.area ?? "",
+      room: location.room ?? "",
+      equipmentPoint: location.equipmentPoint ?? "",
+      impactScope: location.impactScope ?? ""
     });
-  }, [currentVersion, watchedLocation]);
+  }, [currentVersion, liveSnapshot.location, watchedLocation]);
 
   const patchCurrentVersion = async (values: FormSnapshot) => {
     if (!currentVersion) return null;
@@ -596,7 +620,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
         };
 
   const currentStepMeta = WIZARD_STEPS[currentStep];
-  const currentCategory = watchedProjectCategory ?? currentVersion?.snapshot.projectCategory ?? "mep_upgrade";
+  const currentCategory = watchedProjectCategory ?? liveSnapshot.projectCategory ?? currentVersion?.snapshot.projectCategory ?? "mep_upgrade";
   const sectionTabItems = WIZARD_STEPS.map((item, index) => ({
     key: String(index),
     label: (
@@ -620,7 +644,14 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                   </Col>
                 ))}
               </Row>
-              <Button onClick={() => form.setFieldValue("budgetAmount", liveBudgetSummary.calculatedBudget)} disabled={!canEdit}>
+              <Button
+                onClick={() => {
+                  const nextBudget = liveBudgetSummary.calculatedBudget;
+                  form.setFieldValue("budgetAmount", nextBudget);
+                  setLiveSnapshot((previous) => mergeFormSnapshot(previous, { budgetAmount: nextBudget }));
+                }}
+                disabled={!canEdit}
+              >
                 同步矩阵测算总价到申报预算
               </Button>
             </SectionBlock>
@@ -1096,7 +1127,14 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
             </Space>
           </div>
 
-          <Form form={form} layout="vertical">
+          <Form
+            form={form}
+            layout="vertical"
+            preserve
+            onValuesChange={(_, allValues) =>
+              setLiveSnapshot((previous) => mergeFormSnapshot(previous, allValues as Partial<FormSnapshot>))
+            }
+          >
             {stepContent()}
           </Form>
 

@@ -46,13 +46,13 @@ export class FilesController {
   ) {}
 
   @Get("templates/fault-registry.xlsx")
-  downloadFaultRegistryTemplate(@Res() response: Response) {
-    response.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
+  async downloadFaultRegistryTemplate(@Res() response: Response) {
+    response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     response.setHeader(
       "Content-Disposition",
       'attachment; filename="fault-registry-template.xlsx"'
     );
-    response.send(this.filesService.getFaultRegistryTemplate());
+    response.send(await this.filesService.getFaultRegistryTemplate());
   }
 
   @Post("upload")

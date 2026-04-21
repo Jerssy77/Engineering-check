@@ -2,6 +2,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import ExcelJS from "exceljs";
 import {
   AttachmentKind,
   AttachmentSlotKey,
@@ -60,13 +61,168 @@ function readUploadedFile(file: Express.Multer.File): Buffer {
 export class FilesService {
   constructor(@Inject(DemoDataService) private readonly data: DemoDataService) {}
 
-  getFaultRegistryTemplate(): Buffer {
-    const rows = [
-      FAULT_REGISTRY_TEMPLATE_HEADERS.join("\t"),
-      ["xxx项目", "xxx楼栋", "xxx楼层", "xxx区域/房间", "xxx设备/点位", "xxx故障现象", "xxx影响范围", "2026-03-27", "待整改", "xxx临时措施", "照片1"].join("\t")
+  async getFaultRegistryTemplate(): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "工程立项审批平台";
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet("故障点位台账", {
+      views: [{ state: "frozen", ySplit: 4 }],
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+    });
+    sheet.properties.defaultRowHeight = 22;
+    sheet.columns = [
+      { key: "project", width: 18 },
+      { key: "building", width: 12 },
+      { key: "floor", width: 10 },
+      { key: "area", width: 18 },
+      { key: "equipment", width: 22 },
+      { key: "issue", width: 32 },
+      { key: "impact", width: 28 },
+      { key: "foundAt", width: 14 },
+      { key: "status", width: 12 },
+      { key: "temporary", width: 28 },
+      { key: "photoNo", width: 16 }
     ];
 
-    return Buffer.from(`\uFEFF${rows.join("\r\n")}`, "utf8");
+    sheet.mergeCells("A1:K1");
+    sheet.getCell("A1").value = "工程立项故障点位台账";
+    sheet.getCell("A1").font = { bold: true, size: 18, color: { argb: "FF0F3A6B" } };
+    sheet.getCell("A1").alignment = { vertical: "middle" };
+    sheet.getRow(1).height = 34;
+
+    sheet.mergeCells("A2:K2");
+    sheet.getCell("A2").value =
+      "用于立项阶段说明故障/缺陷点位、影响范围和临时措施。请按一行一个点位填写，现状照片编号需与上传照片文件名或照片序号对应。";
+    sheet.getCell("A2").font = { color: { argb: "FF52657A" }, size: 10 };
+    sheet.getCell("A2").alignment = { wrapText: true, vertical: "middle" };
+    sheet.getRow(2).height = 34;
+
+    sheet.getRow(4).values = FAULT_REGISTRY_TEMPLATE_HEADERS;
+    sheet.getRow(4).height = 30;
+    sheet.getRow(4).eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF2FF" } };
+      cell.font = { bold: true, color: { argb: "FF123B69" } };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFBCD2EA" } },
+        left: { style: "thin", color: { argb: "FFBCD2EA" } },
+        bottom: { style: "thin", color: { argb: "FFBCD2EA" } },
+        right: { style: "thin", color: { argb: "FFBCD2EA" } }
+      };
+    });
+
+    const exampleRows = [
+      [
+        "示例：世纪城小区",
+        "1#楼",
+        "B1",
+        "生活水泵房",
+        "2#生活泵",
+        "运行异响，泵体振动明显，夜间噪声投诉增加",
+        "影响 1#楼低区生活供水稳定性",
+        "2026-04-21",
+        "待整改",
+        "维保单位每日巡检，必要时切换备用泵",
+        "照片1、照片2"
+      ],
+      [
+        "示例：世纪城小区",
+        "地下车库",
+        "B2",
+        "排水沟",
+        "集水井 J-03",
+        "井盖破损，周边地坪轻微沉降",
+        "影响车库通行和排水安全",
+        "2026-04-21",
+        "处理中",
+        "设置围挡和警示牌，雨天加强巡查",
+        "照片3"
+      ]
+    ];
+
+    sheet.addRows(exampleRows);
+    for (let rowNumber = 5; rowNumber <= 104; rowNumber += 1) {
+      const row = sheet.getRow(rowNumber);
+      if (rowNumber > 6) {
+        row.values = new Array(FAULT_REGISTRY_TEMPLATE_HEADERS.length).fill("");
+      }
+      row.height = 28;
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = { vertical: "middle", wrapText: true };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFE3ECF7" } },
+          left: { style: "thin", color: { argb: "FFE3ECF7" } },
+          bottom: { style: "thin", color: { argb: "FFE3ECF7" } },
+          right: { style: "thin", color: { argb: "FFE3ECF7" } }
+        };
+        if (rowNumber % 2 === 0) {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FBFF" } };
+        }
+      });
+    }
+
+    sheet.getColumn("H").numFmt = "yyyy-mm-dd";
+    for (let rowNumber = 5; rowNumber <= 104; rowNumber += 1) {
+      sheet.getCell(`I${rowNumber}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: ['"待整改,处理中,已完成,观察中,暂缓"'],
+        showErrorMessage: true,
+        errorTitle: "请选择状态",
+        error: "请从下拉列表中选择当前状态。"
+      };
+      sheet.getCell(`H${rowNumber}`).dataValidation = {
+        type: "date",
+        operator: "between",
+        allowBlank: true,
+        formulae: [new Date("2020-01-01"), new Date("2035-12-31")],
+        showErrorMessage: true,
+        errorTitle: "日期格式不正确",
+        error: "请填写有效日期，例如 2026-04-21。"
+      };
+    }
+
+    sheet.autoFilter = "A4:K104";
+
+    const guide = workbook.addWorksheet("填写说明");
+    guide.columns = [
+      { key: "item", width: 18 },
+      { key: "description", width: 72 },
+      { key: "example", width: 32 }
+    ];
+    guide.getRow(1).values = ["字段", "填写要求", "示例"];
+    guide.getRow(1).height = 28;
+    guide.getRow(1).eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F3A6B" } };
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+    });
+    guide.addRows([
+      ["楼盘/项目", "填写项目所在楼盘或管理项目名称，尽量与立项名称保持一致。", "世纪城小区"],
+      ["区域/房间", "填写能让审核人定位现场的区域、系统或房间。", "B1 生活水泵房"],
+      ["设备/点位", "填写具体设备、构件、井号、门岗、道路段或点位编号。", "2#生活泵"],
+      ["故障/缺陷现象", "说明现场看到的问题，不要只写“损坏”。建议包含程度、频率、持续时间。", "运行异响，振动明显"],
+      ["影响范围", "说明影响哪些楼栋、客户、设备系统或安全风险。", "影响低区供水稳定"],
+      ["当前状态", "从下拉框选择：待整改、处理中、已完成、观察中、暂缓。", "待整改"],
+      ["临时措施", "说明已采取的临时保障、围挡、巡查、切换、停用或告知措施。", "切换备用泵并每日巡检"],
+      ["对应照片编号", "与上传照片文件名或照片序号对应，便于审核人快速核对。", "照片1、照片2"]
+    ]);
+    guide.eachRow((row, rowNumber) => {
+      row.height = rowNumber === 1 ? 28 : 42;
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = { vertical: "middle", wrapText: true };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFE3ECF7" } },
+          left: { style: "thin", color: { argb: "FFE3ECF7" } },
+          bottom: { style: "thin", color: { argb: "FFE3ECF7" } },
+          right: { style: "thin", color: { argb: "FFE3ECF7" } }
+        };
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   }
 
   uploadFiles(params: {

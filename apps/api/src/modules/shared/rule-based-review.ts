@@ -452,7 +452,7 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
         requirement: "改造目标、实施范围或关键工艺缺失，当前无法判断方案是否可执行。",
         reason: "平台审批要求技术方案至少形成目标、范围、工艺、验收和恢复验证闭环。",
         action: "补齐目标、范围、关键工艺、施工切换和恢复验证逻辑后再送审。",
-        requiredMaterials: ["图纸", "补充材料"],
+        requiredMaterials: ["范围示意", "现状照片", "补充说明"],
         ruleId: "platform-technical-loop-required",
         writebackText: "最终方案应明确改造目标、实施范围、关键工艺、施工切换、验收方式和恢复验证，形成可执行闭环。"
       })
@@ -466,18 +466,29 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
       basis: "材料选型应匹配场景、寿命和维护要求，验收方案应具有可执行的测试标准。",
       currentState: "当前方案未清晰说明材料型号适配性，或验收方式、指标不明确。",
       action: "补充主要材料/设备型号、适用场景、寿命要求及测试验收标准。",
-      requiredMaterials: ["图纸"]
+      requiredMaterials: ["材料或设备选型说明"]
     });
   }
 
-  if (!hasText(snapshot.hiddenWorksRequirement) || !hasText(snapshot.detailDrawingRequirement)) {
+  if ((snapshot.riskFlags?.concealedWork || hasText(snapshot.hiddenWorksRequirement)) && !hasText(snapshot.hiddenWorksRequirement)) {
     pushFinding(technicalFindings, {
       severity: "medium",
-      title: "隐蔽工程或节点做法说明不足",
-      basis: "涉及隐蔽工程、节点详图、样板先行和第三方检测的项目，应提前明确控制点。",
-      currentState: "当前未充分说明隐蔽工程留档方式或节点做法细节。",
-      action: "明确哪些部位需要隐蔽验收、节点详图、样板先行或第三方检测，并写入实施方案。",
-      requiredMaterials: ["图纸", "补充材料"]
+      title: "隐蔽工程留档与验收控制说明不足",
+      basis: "立项阶段不要求提供详细施工图或节点大样，但涉及隐蔽工程时应说明过程留档、隐蔽验收和责任边界。",
+      currentState: "当前已标记或描述涉及隐蔽工程，但缺少过程留档和隐蔽验收控制说明。",
+      action: "补充隐蔽部位范围、过程照片留档、隐蔽验收节点和完工移交资料要求；详细节点做法可在招采或施工深化阶段补充。",
+      requiredMaterials: ["现状照片", "范围示意", "补充说明"]
+    });
+  }
+
+  if (!hasText(snapshot.detailDrawingRequirement) && (snapshot.riskFlags?.concealedWork || snapshot.projectCategory === "civil_upgrade")) {
+    pushFinding(technicalFindings, {
+      severity: "low",
+      title: "后续深化资料安排可进一步说明",
+      basis: "立项审批阶段重点判断必要性、范围、预算和风险边界，不应把招标深度施工图或详细节点大样作为硬性前置条件。",
+      currentState: "当前未说明后续由设计、施工或供应商深化关键节点做法的安排。",
+      action: "可补充一句：通过立项后，由中标单位或专业单位在施工前完善关键节点做法、样板确认和验收留档要求。",
+      requiredMaterials: []
     });
   }
 
