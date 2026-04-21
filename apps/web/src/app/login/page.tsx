@@ -31,36 +31,11 @@ const PROCESS_STEPS = [
   "通过后输出可行性报告与工程量清单"
 ];
 
-const DEMO_ACCOUNTS = [
-  {
-    role: "管理员",
-    username: "admin",
-    password: "demo123",
-    description: "查看全量项目、审批结果和系统配置。"
-  },
-  {
-    role: "审核人",
-    username: "reviewer",
-    password: "demo123",
-    description: "处理 AI 预审后的人工终审和报告查看。"
-  },
-  {
-    role: "申报人",
-    username: "submitter",
-    password: "demo123",
-    description: "发起立项、补充材料并跟踪审批状态。"
-  }
-];
-
 export default function LoginPage() {
   const router = useRouter();
   const [form] = Form.useForm<{ username: string; password: string }>();
   const [messageApi, contextHolder] = message.useMessage();
   const [submitting, setSubmitting] = useState(false);
-
-  const fillDemoAccount = (username: string, password: string) => {
-    form.setFieldsValue({ username, password });
-  };
 
   const submit = async (values: { username: string; password: string }) => {
     setSubmitting(true);
@@ -155,30 +130,6 @@ export default function LoginPage() {
               进入工作台
             </Button>
           </Form>
-
-          <div className="auth-demo-block">
-            <div className="auth-panel-head">
-              <span className="summary-label">演示账号</span>
-              <strong>点击即可自动填入</strong>
-            </div>
-
-            <div className="auth-demo-list">
-              {DEMO_ACCOUNTS.map((account) => (
-                <button
-                  key={account.role}
-                  type="button"
-                  className="auth-demo-card"
-                  onClick={() => fillDemoAccount(account.username, account.password)}
-                >
-                  <div>
-                    <span>{account.role}</span>
-                    <strong>{account.username}</strong>
-                  </div>
-                  <p>{account.description}</p>
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div className="auth-footnote">
             <strong>当前版本支持</strong>
