@@ -88,6 +88,19 @@ export class ProjectsController {
     return this.projectsService.getReport(projectId, versionId, this.authService.requireSession(userId));
   }
 
+  @Get(":projectId/versions/:versionId/final-review-report")
+  finalReviewReport(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("projectId") projectId: string,
+    @Param("versionId") versionId: string
+  ) {
+    return this.projectsService.getFinalReviewReport(
+      projectId,
+      versionId,
+      this.authService.requireSession(userId)
+    );
+  }
+
   @Get(":projectId/versions/:versionId/report.pdf")
   async reportPdf(
     @Headers("x-user-id") userId: string | undefined,
@@ -105,6 +118,140 @@ export class ProjectsController {
     response.setHeader(
       "Content-Disposition",
       `attachment; filename="${encodeURIComponent(`ai-review-${versionId}.pdf`)}"`
+    );
+    response.send(buffer);
+  }
+
+  @Get(":projectId/versions/:versionId/final-review-report.pdf")
+  async finalReviewReportPdf(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("projectId") projectId: string,
+    @Param("versionId") versionId: string,
+    @Res() response: Response
+  ) {
+    const buffer = await this.projectsService.downloadFinalReviewReportPdf(
+      projectId,
+      versionId,
+      this.authService.requireSession(userId)
+    );
+
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(`final-review-${versionId}.pdf`)}"`
+    );
+    response.send(buffer);
+  }
+
+  @Get(":projectId/versions/:versionId/feasibility-report")
+  feasibilityReport(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("projectId") projectId: string,
+    @Param("versionId") versionId: string
+  ) {
+    return this.projectsService.getFeasibilityReport(
+      projectId,
+      versionId,
+      this.authService.requireSession(userId)
+    );
+  }
+
+  @Get(":projectId/versions/:versionId/feasibility-report.pdf")
+  async feasibilityReportPdf(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("projectId") projectId: string,
+    @Param("versionId") versionId: string,
+    @Res() response: Response
+  ) {
+    const buffer = await this.projectsService.downloadFeasibilityReportPdf(
+      projectId,
+      versionId,
+      this.authService.requireSession(userId)
+    );
+
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(`feasibility-${versionId}.pdf`)}"`
+    );
+    response.send(buffer);
+  }
+
+  @Get(":projectId/versions/:versionId/bill-of-quantities")
+  billOfQuantities(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("projectId") projectId: string,
+    @Param("versionId") versionId: string
+  ) {
+    return this.projectsService.getBillOfQuantities(
+      projectId,
+      versionId,
+      this.authService.requireSession(userId)
+    );
+  }
+
+  @Get(":projectId/versions/:versionId/bill-of-quantities.pdf")
+  async billOfQuantitiesPdf(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("projectId") projectId: string,
+    @Param("versionId") versionId: string,
+    @Res() response: Response
+  ) {
+    const buffer = await this.projectsService.downloadBillOfQuantitiesPdf(
+      projectId,
+      versionId,
+      this.authService.requireSession(userId)
+    );
+
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(`bill-of-quantities-${versionId}.pdf`)}"`
+    );
+    response.send(buffer);
+  }
+
+  @Get(":projectId/versions/:versionId/bill-of-quantities.xlsx")
+  async billOfQuantitiesExcel(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("projectId") projectId: string,
+    @Param("versionId") versionId: string,
+    @Res() response: Response
+  ) {
+    const buffer = await this.projectsService.downloadBillOfQuantitiesExcel(
+      projectId,
+      versionId,
+      this.authService.requireSession(userId)
+    );
+
+    response.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(`bill-of-quantities-${versionId}.xlsx`)}"`
+    );
+    response.send(buffer);
+  }
+
+  @Get(":projectId/versions/:versionId/construction-plan.pdf")
+  async constructionPlanPdf(
+    @Headers("x-user-id") userId: string | undefined,
+    @Param("projectId") projectId: string,
+    @Param("versionId") versionId: string,
+    @Res() response: Response
+  ) {
+    const buffer = await this.projectsService.downloadConstructionPlanPdf(
+      projectId,
+      versionId,
+      this.authService.requireSession(userId)
+    );
+
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(`construction-plan-${versionId}.pdf`)}"`
     );
     response.send(buffer);
   }

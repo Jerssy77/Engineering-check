@@ -2,19 +2,68 @@
 
 import { LockOutlined, UserOutlined } from "@ant-design/icons";
 import { AuthResponse } from "@property-review/shared";
-import { Button, Col, Form, Input, Row, Typography, message } from "antd";
+import { Button, Form, Input, Space, Typography, message } from "antd";
 import { useRouter } from "next/navigation";
-import { startTransition } from "react";
+import { startTransition, useState } from "react";
 
 import { apiRequest } from "../../lib/api";
 import { saveSession } from "../../lib/session";
+
+const PLATFORM_POINTS = [
+  {
+    title: "统一填报",
+    description: "城市公司、工程中心和管理层在同一套结构里完成立项信息、预算和附件归档。"
+  },
+  {
+    title: "AI 预审",
+    description: "把规范性要求、成本优化和技术建议集中到同一份审核视图，减少来回沟通。"
+  },
+  {
+    title: "成果直出",
+    description: "人工通过后直接生成审核报告、可行性报告和工程量清单，支持 PDF / Excel 导出。"
+  }
+];
+
+const PROCESS_STEPS = [
+  "申报人提交项目与附件",
+  "AI 形成预审结论与强制项",
+  "人工终审合并意见并留档",
+  "通过后输出可行性报告与工程量清单"
+];
+
+const DEMO_ACCOUNTS = [
+  {
+    role: "管理员",
+    username: "admin",
+    password: "demo123",
+    description: "查看全量项目、审批结果和系统配置。"
+  },
+  {
+    role: "审核人",
+    username: "reviewer",
+    password: "demo123",
+    description: "处理 AI 预审后的人工终审和报告查看。"
+  },
+  {
+    role: "申报人",
+    username: "submitter",
+    password: "demo123",
+    description: "发起立项、补充材料并跟踪审批状态。"
+  }
+];
 
 export default function LoginPage() {
   const router = useRouter();
   const [form] = Form.useForm<{ username: string; password: string }>();
   const [messageApi, contextHolder] = message.useMessage();
+  const [submitting, setSubmitting] = useState(false);
+
+  const fillDemoAccount = (username: string, password: string) => {
+    form.setFieldsValue({ username, password });
+  };
 
   const submit = async (values: { username: string; password: string }) => {
+    setSubmitting(true);
     try {
       const session = await apiRequest<AuthResponse>("/auth/login", {
         method: "POST",
@@ -22,64 +71,119 @@ export default function LoginPage() {
       });
 
       saveSession(session);
-      messageApi.success("\u767b\u5f55\u6210\u529f");
+      messageApi.success("登录成功");
       startTransition(() => router.push("/projects"));
     } catch (error) {
-      const text = error instanceof Error ? error.message : "\u767b\u5f55\u5931\u8d25";
+      const text = error instanceof Error ? error.message : "登录失败";
       messageApi.error(text);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="page-shell">
+    <div className="auth-shell">
       {contextHolder}
-      <div className="section-grid two-col">
-        <section className="glass-card" style={{ padding: 36 }}>
-          <span className="hero-kicker">{"\u7269\u4e1a\u5de5\u7a0b\u7acb\u9879 - AI \u9884\u5ba1"}</span>
-          <h1 className="hero-title" style={{ marginTop: 18 }}>
-            {"\u8ba9\u7acb\u9879\u8349\u7a3f\u3001AI \u7ed3\u8bba\u548c\u4eba\u5de5\u7ec8\u5ba1\u7559\u5728\u540c\u4e00\u6761\u5de5\u4f5c\u6d41\u91cc\u3002"}
-          </h1>
-          <Typography.Paragraph style={{ fontSize: 16, color: "#56636a", marginTop: 18 }}>
-            {"\u57ce\u5e02\u516c\u53f8\u6309\u6807\u51c6\u6a21\u5757\u586b\u62a5\u7acb\u9879\u6750\u6599\uff0c\u7cfb\u7edf\u5148\u505a\u989d\u5ea6\u4e0e\u51b7\u5374\u671f\u6821\u9a8c\uff0c\u518d\u89e6\u53d1 AI \u9884\u5ba1\uff0c"}
-            {"\u751f\u6210\u4e00\u9875\u7b80\u660e\u7ed3\u8bba\u4f9b\u533a\u57df\u6216\u603b\u90e8\u5de5\u7a0b\u7ba1\u7406\u4eba\u5feb\u901f\u5224\u65ad\u3002"}
-          </Typography.Paragraph>
-          <Row gutter={[16, 16]} style={{ marginTop: 28 }}>
-            {[
-              { label: "\u57ce\u5e02\u516c\u53f8\u6bcf\u5468 AI \u9001\u5ba1", value: "3 \u6b21" },
-              { label: "\u9000\u56de\u540e\u51b7\u5374\u671f", value: "3 \u5929" },
-              { label: "\u8f93\u51fa\u7ed3\u679c", value: "\u5728\u7ebf\u9875 + PDF" }
-            ].map((item) => (
-              <Col span={8} key={item.label}>
-                <div className="metric-chip">
-                  <Typography.Text type="secondary">{item.label}</Typography.Text>
-                  <Typography.Title level={4} style={{ margin: "6px 0 0" }}>
-                    {item.value}
-                  </Typography.Title>
-                </div>
-              </Col>
+
+      <div className="auth-grid">
+        <section className="auth-hero">
+          <div className="auth-hero-copy">
+            <span className="auth-badge">工程立项审批平台</span>
+            <Typography.Title className="auth-title">
+              让立项、AI 审核和正式审批成果留在同一条工作流里。
+            </Typography.Title>
+            <Typography.Paragraph className="auth-lead">
+              面向城市公司与工程管理团队的内部审批系统。重点不是做一个更复杂的后台，而是让填报更快、
+              审核更清楚、结果更容易流转。
+            </Typography.Paragraph>
+          </div>
+
+          <div className="auth-highlight-grid">
+            {PLATFORM_POINTS.map((item) => (
+              <div key={item.title} className="auth-highlight-card">
+                <span>{item.title}</span>
+                <strong>{item.description}</strong>
+              </div>
             ))}
-          </Row>
+          </div>
+
+          <div className="auth-process-panel">
+            <div className="auth-panel-head">
+              <span className="summary-label">审批流概览</span>
+              <strong>从填报到成果输出的单线流程</strong>
+            </div>
+            <div className="auth-step-list">
+              {PROCESS_STEPS.map((step, index) => (
+                <div key={step} className="auth-step-item">
+                  <span className="auth-step-index">{String(index + 1).padStart(2, "0")}</span>
+                  <p>{step}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
 
-        <section className="glass-card" style={{ padding: 30 }}>
-          <Typography.Title level={3} style={{ marginTop: 0 }}>
-            {"\u767b\u5f55\u7cfb\u7edf"}
-          </Typography.Title>
-          <Typography.Paragraph type="secondary">
-            {"\u8bf7\u4f7f\u7528\u5df2\u5206\u914d\u7684\u7528\u6237\u540d\u548c\u5bc6\u7801\u767b\u5f55\u7cfb\u7edf\u3002"}
-          </Typography.Paragraph>
+        <section className="auth-panel">
+          <div className="auth-panel-top">
+            <span className="eyebrow-label">账号登录</span>
+            <Typography.Title level={3} style={{ margin: "14px 0 8px" }}>
+              进入工作台
+            </Typography.Title>
+            <Typography.Paragraph className="section-copy" style={{ marginBottom: 0 }}>
+              使用分配账号登录后，可直接进入项目填报、AI 预审、人工终审和成果导出页面。
+            </Typography.Paragraph>
+          </div>
 
-          <Form form={form} layout="vertical" onFinish={submit}>
-            <Form.Item name="username" label={"\u7528\u6237\u540d"} rules={[{ required: true, message: "\u8bf7\u8f93\u5165\u7528\u6237\u540d" }]}>
-              <Input prefix={<UserOutlined />} placeholder={"\u8bf7\u8f93\u5165\u7528\u6237\u540d"} />
+          <Form form={form} layout="vertical" onFinish={submit} className="auth-form">
+            <Form.Item
+              name="username"
+              label="用户名"
+              rules={[{ required: true, message: "请输入用户名" }]}
+            >
+              <Input prefix={<UserOutlined />} placeholder="请输入用户名" size="large" />
             </Form.Item>
-            <Form.Item name="password" label={"\u5bc6\u7801"} rules={[{ required: true, message: "\u8bf7\u8f93\u5165\u5bc6\u7801" }]}>
-              <Input.Password prefix={<LockOutlined />} placeholder={"\u8bf7\u8f93\u5165\u5bc6\u7801"} />
+
+            <Form.Item
+              name="password"
+              label="密码"
+              rules={[{ required: true, message: "请输入密码" }]}
+            >
+              <Input.Password prefix={<LockOutlined />} placeholder="请输入密码" size="large" />
             </Form.Item>
-            <Button type="primary" htmlType="submit" size="large" block style={{ height: 46 }}>
-              {"\u8fdb\u5165\u5de5\u4f5c\u53f0"}
+
+            <Button type="primary" htmlType="submit" size="large" block loading={submitting} style={{ height: 50 }}>
+              进入工作台
             </Button>
           </Form>
+
+          <div className="auth-demo-block">
+            <div className="auth-panel-head">
+              <span className="summary-label">演示账号</span>
+              <strong>点击即可自动填入</strong>
+            </div>
+
+            <div className="auth-demo-list">
+              {DEMO_ACCOUNTS.map((account) => (
+                <button
+                  key={account.role}
+                  type="button"
+                  className="auth-demo-card"
+                  onClick={() => fillDemoAccount(account.username, account.password)}
+                >
+                  <div>
+                    <span>{account.role}</span>
+                    <strong>{account.username}</strong>
+                  </div>
+                  <p>{account.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="auth-footnote">
+            <strong>当前版本支持</strong>
+            <span>项目填报、附件归档、AI 预审、人工终审、可行性报告与工程量清单导出。</span>
+          </div>
         </section>
       </div>
     </div>

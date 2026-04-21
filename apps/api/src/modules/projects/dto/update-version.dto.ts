@@ -136,4 +136,12 @@ export class UpdateVersionDto {
   @IsOptional()
   @IsArray()
   costMatrixRows?: Array<Record<string, unknown>>;
+
+  @IsOptional()
+  @IsObject()
+  riskFlags?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  categorySpecificFields?: Record<string, Record<string, string | number | boolean>>;
 }

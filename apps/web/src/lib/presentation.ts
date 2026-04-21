@@ -27,7 +27,7 @@ export function formatDate(value?: string): string {
 }
 
 export function formatCurrency(value?: number): string {
-  return `\u00a5 ${Number(value ?? 0).toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  return `¥ ${Number(value ?? 0).toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 export const categoryLabels: Record<string, string> = PROJECT_CATEGORY_LABELS;
@@ -39,33 +39,33 @@ export const verdictLabels: Record<string, string> = VERDICT_LABELS;
 export const technicalSchemeTemplates = TECHNICAL_SCHEME_TEMPLATES;
 
 export const roleLabels: Record<string, string> = {
-  submitter: "\u7533\u62a5\u4eba",
-  reviewer: "\u7ec8\u5ba1\u4eba",
-  admin: "\u7ba1\u7406\u5458"
+  submitter: "申报人",
+  reviewer: "终审人",
+  admin: "管理员"
 };
 
 export const organizationKindLabels: Record<string, string> = {
-  city_company: "\u57ce\u5e02\u516c\u53f8",
-  regional_hq: "\u533a\u57df\u5de5\u7a0b\u4e2d\u5fc3",
-  group_hq: "\u603b\u90e8"
+  city_company: "城市公司",
+  regional_hq: "区域工程中心",
+  group_hq: "总部"
 };
 
 export const auditActionLabels: Record<string, string> = {
-  create_project: "\u521b\u5efa\u7acb\u9879\u8349\u7a3f",
-  create_version: "\u751f\u6210\u65b0\u7248\u672c",
-  update_version: "\u66f4\u65b0\u8349\u7a3f",
-  submit_project: "\u63d0\u4ea4 AI \u9884\u5ba1",
-  ai_review_complete: "AI \u9884\u5ba1\u5b8c\u6210",
-  ai_review_failed: "AI \u8c03\u7528\u5931\u8d25",
-  human_decision: "\u4eba\u5de5\u7ec8\u5ba1",
-  upload_files: "\u6750\u6599\u7ef4\u62a4",
-  grant_override: "\u53d1\u653e\u7279\u6279"
+  create_project: "创建立项草稿",
+  create_version: "生成新版本",
+  update_version: "更新草稿",
+  submit_project: "提交 AI 预审",
+  ai_review_complete: "AI 预审完成",
+  ai_review_failed: "AI 调用失败",
+  human_decision: "人工终审",
+  upload_files: "材料维护",
+  grant_override: "发放特批"
 };
 
 export const overrideScopeLabels: Record<string, string> = {
-  weekly_quota: "\u8df3\u8fc7\u5468\u989d\u5ea6",
-  cooldown: "\u8df3\u8fc7\u51b7\u5374\u671f",
-  both: "\u989d\u5ea6+\u51b7\u5374\u671f"
+  weekly_quota: "跳过周额度",
+  cooldown: "跳过冷却期",
+  both: "额度+冷却期"
 };
 
 export const projectCategoryOptions = Object.entries(categoryLabels).map(([value, label]) => ({ value, label }));

@@ -1,4 +1,4 @@
-import { IsIn, IsString, MinLength } from "class-validator";
+import { IsArray, IsIn, IsOptional, IsString, MinLength } from "class-validator";
 
 export class HumanDecisionDto {
   @IsIn(["approved", "returned"])
@@ -7,4 +7,9 @@ export class HumanDecisionDto {
   @IsString()
   @MinLength(4)
   comment!: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  selectedWritebackIds?: string[];
 }

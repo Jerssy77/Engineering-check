@@ -7,6 +7,10 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm run start:api
     healthCheckPath: /health
+    disk:
+      name: property-review-data
+      mountPath: /opt/render/project/src/runtime-data
+      sizeGB: 5
     envVars:
       - key: API_HOST
         value: 0.0.0.0
@@ -37,6 +41,7 @@ services:
         - package.json
         - package-lock.json
         - tsconfig.base.json
+        - render.yaml
         - scripts/build-all.mjs
   - type: web
     name: property-review-web
@@ -57,4 +62,5 @@ services:
         - package.json
         - package-lock.json
         - tsconfig.base.json
+        - render.yaml
         - scripts/build-all.mjs

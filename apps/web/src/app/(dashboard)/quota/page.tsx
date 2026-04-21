@@ -46,7 +46,7 @@ export default function QuotaPage() {
         const response = await apiRequest<QuotaResponse>("/quota/me", {}, session);
         setQuota(response);
       } catch (error) {
-        messageApi.error(error instanceof Error ? error.message : "\u989d\u5ea6\u4fe1\u606f\u52a0\u8f7d\u5931\u8d25");
+        messageApi.error(error instanceof Error ? error.message : "额度信息加载失败");
       } finally {
         setLoading(false);
       }
@@ -59,13 +59,13 @@ export default function QuotaPage() {
     <div className="section-grid">
       {contextHolder}
       <Card className="glass-card" styles={{ body: { padding: 28 } }}>
-        <span className="hero-kicker">{"\u989d\u5ea6\u4e2d\u5fc3"}</span>
+        <span className="hero-kicker">{"额度中心"}</span>
         <Typography.Title level={2} style={{ marginTop: 14, marginBottom: 0 }}>
-          {"AI \u7528\u91cf\u63a7\u5236"}
+          {"AI 用量控制"}
         </Typography.Title>
         <Typography.Paragraph style={{ color: "#56636a", marginTop: 10 }}>
           {
-            "\u53ea\u6709\u201c\u63d0\u4ea4 AI \u9884\u5ba1\u201d\u4f1a\u6d88\u8017\u989d\u5ea6\uff0c\u8349\u7a3f\u4fdd\u5b58\u3001\u67e5\u770b\u7ed3\u8bba\u6216\u5386\u53f2\u7248\u672c\u90fd\u4e0d\u4f1a\u5360\u7528\u989d\u5ea6\u3002"
+            "只有“提交 AI 预审”会消耗额度，草稿保存、查看结论或历史版本都不会占用额度。"
           }
         </Typography.Paragraph>
       </Card>
@@ -74,7 +74,7 @@ export default function QuotaPage() {
         <Col xs={24} md={8}>
           <Card className="glass-card" loading={loading} styles={{ body: { padding: 24 } }}>
             <Statistic
-              title={"\u672c\u5468\u5269\u4f59\u989d\u5ea6"}
+              title={"本周剩余额度"}
               value={quota?.remaining ?? 0}
               suffix={`/ ${quota?.policy.weeklyQuotaPerCity ?? 0}`}
             />
@@ -82,30 +82,30 @@ export default function QuotaPage() {
         </Col>
         <Col xs={24} md={8}>
           <Card className="glass-card" loading={loading} styles={{ body: { padding: 24 } }}>
-            <Statistic title={"\u672c\u5468\u5df2\u4f7f\u7528"} value={quota?.used ?? 0} />
+            <Statistic title={"本周已使用"} value={quota?.used ?? 0} />
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card className="glass-card" loading={loading} styles={{ body: { padding: 24 } }}>
             <Statistic
-              title={"\u9000\u56de\u540e\u51b7\u5374\u671f"}
+              title={"退回后冷却期"}
               value={quota?.policy.resubmitCooldownDays ?? 3}
-              suffix={"\u5929"}
+              suffix={"天"}
             />
           </Card>
         </Col>
       </Row>
 
       <Card className="glass-card" loading={loading} styles={{ body: { padding: 24 } }}>
-        <Typography.Title level={4}>{"\u989d\u5ea6\u53f0\u8d26"}</Typography.Title>
+        <Typography.Title level={4}>{"额度台账"}</Typography.Title>
         <Typography.Paragraph type="secondary">
-          {`\u7edf\u8ba1\u5468\u671f\uff1a${quota ? formatDate(quota.weekStart) : "--"} - ${
+          {`统计周期：${quota ? formatDate(quota.weekStart) : "--"} - ${
             quota ? formatDate(quota.weekEnd) : "--"
           }`}
         </Typography.Paragraph>
         <List
           dataSource={quota?.entries ?? []}
-          locale={{ emptyText: "\u672c\u5468\u6682\u65e0 AI \u9001\u5ba1\u8bb0\u5f55" }}
+          locale={{ emptyText: "本周暂无 AI 送审记录" }}
           renderItem={(item) => (
             <List.Item>
               <List.Item.Meta title={item.projectTitle} description={formatDateTime(item.consumedAt)} />

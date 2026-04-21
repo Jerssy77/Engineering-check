@@ -4,7 +4,6 @@ import { PlusOutlined } from "@ant-design/icons";
 import { ProjectStatus } from "@property-review/shared";
 import {
   Button,
-  Card,
   Col,
   Drawer,
   Form,
@@ -13,7 +12,6 @@ import {
   Row,
   Select,
   Space,
-  Statistic,
   Table,
   Tag,
   Typography,
@@ -22,7 +20,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 
 import { StatusTag } from "../../../components/status-tag";
 import { apiRequest } from "../../../lib/api";
@@ -72,20 +70,15 @@ type CreateProjectForm = {
   area: string;
   room: string;
   equipmentPoint: string;
-  issueSourceType: "inspection" | "complaint" | "work_order" | "safety_hazard" | "energy_optimization" | "repair_renewal" | "other";
+  issueSourceType:
+    | "inspection"
+    | "complaint"
+    | "work_order"
+    | "safety_hazard"
+    | "energy_optimization"
+    | "repair_renewal"
+    | "other";
   issueDescription: string;
-};
-
-const TEXT = {
-  pageKicker: "\u7acb\u9879\u5de5\u4f5c\u53f0",
-  pageTitle: "\u57ce\u5e02\u516c\u53f8\u7acb\u9879\u5217\u8868",
-  pageDesc:
-    "\u5728\u8fd9\u91cc\u521b\u5efa\u6807\u51c6\u5316\u8349\u7a3f\u3001\u67e5\u770b AI \u9884\u5ba1\u7ed3\u8bba\u3001\u8ddf\u8e2a\u989d\u5ea6\u4e0e\u51b7\u5374\u671f\uff0c\u5e76\u57fa\u4e8e\u65b0\u7248\u672c\u7ee7\u7eed\u9001\u5ba1\u3002",
-  createDraft: "\u65b0\u5efa\u8349\u7a3f",
-  viewMode: "\u53ea\u8bfb\u6d4f\u89c8",
-  draftTitle: "\u521b\u5efa\u6807\u51c6\u5316\u7acb\u9879\u8349\u7a3f",
-  draftDesc:
-    "\u5148\u786e\u5b9a\u9879\u76ee\u57fa\u7840\u4fe1\u606f\u3001\u4f4d\u7f6e\u548c\u95ee\u9898\u6765\u6e90\uff0c\u8be6\u7ec6\u7684\u6280\u672f\u65b9\u6848\u3001\u6750\u6599\u69fd\u4f4d\u4e0e\u8d39\u7528\u6e05\u5355\u5728\u8be6\u60c5\u9875\u8865\u5168\u3002"
 };
 
 const initialForm: CreateProjectForm = {
@@ -133,7 +126,7 @@ export default function ProjectsPage() {
       setQuota(quotaData);
     } catch (error) {
       if (!options?.suppressErrors) {
-        messageApi.error(error instanceof Error ? error.message : "\u7acb\u9879\u5217\u8868\u52a0\u8f7d\u5931\u8d25");
+        messageApi.error(error instanceof Error ? error.message : "立项列表加载失败");
       }
     } finally {
       if (!options?.background) {
@@ -160,7 +153,7 @@ export default function ProjectsPage() {
 
   const createProject = async (values: CreateProjectForm) => {
     if (!isSubmitter) {
-      messageApi.error("\u53ea\u6709\u7533\u62a5\u4eba\u8d26\u53f7\u53ef\u4ee5\u521b\u5efa\u8349\u7a3f");
+      messageApi.error("只有申报人账号可以创建草稿");
       return;
     }
 
@@ -170,23 +163,31 @@ export default function ProjectsPage() {
         method: "POST",
         body: JSON.stringify(values)
       });
-      messageApi.success("\u5df2\u521b\u5efa\u8349\u7a3f");
+      messageApi.success("已创建草稿");
       setDrawerOpen(false);
       form.resetFields();
       startTransition(() => router.push(`/projects/${detail.project.id}`));
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "\u521b\u5efa\u8349\u7a3f\u5931\u8d25");
+      messageApi.error(error instanceof Error ? error.message : "创建草稿失败");
     } finally {
       setSaving(false);
     }
   };
 
+  const stats = useMemo(() => {
+    const total = projects.length;
+    const reviewing = projects.filter((item) => item.status === "ai_reviewing").length;
+    const approved = projects.filter((item) => item.status === "human_approved").length;
+    const duplicate = projects.filter((item) => item.duplicateFlag).length;
+    return { total, reviewing, approved, duplicate };
+  }, [projects]);
+
   const columns: ColumnsType<ProjectRow> = [
     {
-      title: "\u7acb\u9879",
+      title: "项目",
       dataIndex: "title",
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space direction="vertical" size={2}>
           <Link href={`/projects/${record.id}`}>
             <Typography.Text strong>{record.title}</Typography.Text>
           </Link>
@@ -195,37 +196,32 @@ export default function ProjectsPage() {
       )
     },
     {
-      title: "\u5206\u7c7b",
+      title: "分类",
       dataIndex: "category",
-      render: (value) => <Tag>{labelFromMap(categoryLabels, value)}</Tag>
+      render: (value) => <Tag className="tone-chip">{labelFromMap(categoryLabels, value)}</Tag>
     },
     {
-      title: "\u4f4d\u7f6e",
-      dataIndex: "locationSummary",
-      render: (value) => <Typography.Text type="secondary">{value}</Typography.Text>
-    },
-    {
-      title: "\u72b6\u6001",
+      title: "当前状态",
       dataIndex: "status",
       render: (value) => <StatusTag status={value} />
     },
     {
-      title: "\u7248\u672c",
-      dataIndex: "currentVersionNumber",
-      render: (value) => `V${value}`
+      title: "位置摘要",
+      dataIndex: "locationSummary",
+      render: (value) => <Typography.Text type="secondary">{value}</Typography.Text>
     },
     {
-      title: "\u9884\u7b97",
+      title: "预算",
       dataIndex: "budgetAmount",
       render: (value) => formatCurrency(value)
     },
     {
-      title: "\u91cd\u590d\u98ce\u9669",
-      dataIndex: "duplicateFlag",
-      render: (value) => (value ? <Tag color="orange">\u7591\u4f3c\u91cd\u590d</Tag> : <Tag>\u65e0</Tag>)
+      title: "版本",
+      dataIndex: "currentVersionNumber",
+      render: (value) => `V${value}`
     },
     {
-      title: "\u66f4\u65b0\u65f6\u95f4",
+      title: "更新时间",
       dataIndex: "updatedAt",
       render: (value) => formatDateTime(value)
     }
@@ -234,144 +230,250 @@ export default function ProjectsPage() {
   return (
     <div className="section-grid">
       {contextHolder}
-      <section className="glass-card" style={{ padding: 28 }}>
-        <Space direction="vertical" size={10}>
-          <span className="hero-kicker">{TEXT.pageKicker}</span>
-          <Typography.Title level={2} style={{ margin: 0 }}>
-            {TEXT.pageTitle}
-          </Typography.Title>
-          <Typography.Paragraph style={{ maxWidth: 760, color: "#56636a", marginBottom: 0 }}>
-            {TEXT.pageDesc}
-          </Typography.Paragraph>
-        </Space>
+
+      <section className="glass-card brand-frame page-hero">
+        <div className="page-hero-grid">
+          <Space direction="vertical" size={14} style={{ maxWidth: 760 }}>
+            <span className="hero-kicker">立项与填报</span>
+            <Typography.Title className="hero-title">
+              城市公司立项工作台
+            </Typography.Title>
+            <Typography.Paragraph className="document-lead">
+              在这里查看项目节奏、创建草稿、进入结构化填报以及跟踪 AI 预审和人工审批结果。
+            </Typography.Paragraph>
+            <Space wrap>
+              {isSubmitter ? (
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>
+                  新建立项草稿
+                </Button>
+              ) : null}
+              <Button onClick={() => void load()}>刷新列表</Button>
+            </Space>
+          </Space>
+
+          <div className="metric-grid">
+            <div className="metric-card">
+              <span>在管项目</span>
+              <strong>{stats.total}</strong>
+            </div>
+            <div className="metric-card">
+              <span>AI 审核中</span>
+              <strong>{stats.reviewing}</strong>
+            </div>
+            <div className="metric-card">
+              <span>人工已通过</span>
+              <strong>{stats.approved}</strong>
+            </div>
+            <div className="metric-card">
+              <span>{isSubmitter ? "本周剩余额度" : "重复风险"}</span>
+              <strong>
+                {isSubmitter
+                  ? `${quota?.remaining ?? 0} / ${quota?.policy.weeklyQuotaPerCity ?? 0}`
+                  : `${stats.duplicate} 项`}
+              </strong>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <Row gutter={[20, 20]}>
-        <Col xs={24} lg={8}>
-          <Card className="glass-card" styles={{ body: { padding: 24 } }}>
-            {isSubmitter ? (
-              <>
-                <Typography.Text type="secondary">{"\u672c\u5468 AI \u989d\u5ea6"}</Typography.Text>
-                <Typography.Title level={2} style={{ marginTop: 10 }}>
-                  {quota ? `${quota.remaining} / ${quota.policy.weeklyQuotaPerCity}` : "--"}
-                </Typography.Title>
-                <Typography.Paragraph style={{ color: "#56636a" }}>
-                  {`\u672c\u5468\u5df2\u4f7f\u7528 ${quota?.used ?? 0} \u6b21\uff0c\u9000\u56de\u540e\u51b7\u5374 ${quota?.policy.resubmitCooldownDays ?? 3} \u5929\u3002`}
-                </Typography.Paragraph>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>
-                  {TEXT.createDraft}
-                </Button>
-              </>
-            ) : (
-              <>
-                <Typography.Text type="secondary">{TEXT.viewMode}</Typography.Text>
-                <Typography.Title level={2} style={{ marginTop: 10 }}>
-                  {"\u5ba1\u6838\u4e0e\u7ba1\u7406\u89c6\u56fe"}
-                </Typography.Title>
-                <Typography.Paragraph style={{ color: "#56636a" }}>
-                  {"\u53ef\u67e5\u770b\u5168\u90e8\u7acb\u9879\uff0c\u8fdb\u5165 AI \u7ed3\u8bba\u9875\u6267\u884c\u7ec8\u5ba1\u6216\u53d1\u653e\u7279\u6279\u3002"}
-                </Typography.Paragraph>
-              </>
-            )}
-          </Card>
-        </Col>
-        <Col xs={24} lg={8}>
-          <Card className="glass-card" styles={{ body: { padding: 24 } }}>
-            <Statistic title={"\u5f85\u5904\u7406\u7acb\u9879"} value={projects.filter((item) => item.status !== "human_approved").length} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={8}>
-          <Card className="glass-card" styles={{ body: { padding: 24 } }}>
-            <Statistic title={"\u5df2\u901a\u8fc7\u7acb\u9879"} value={projects.filter((item) => item.status === "human_approved").length} />
-          </Card>
-        </Col>
-      </Row>
+      <div className="split-layout">
+        <section className="section-surface document-table">
+          <div className="panel-heading" style={{ marginBottom: 18 }}>
+            <div>
+              <Typography.Title level={4} className="section-title">
+                当前项目列表
+              </Typography.Title>
+              <p>
+                按统一的审批语义查看项目状态、版本、预算和时间节点，点击即可进入详情和填报页面。
+              </p>
+            </div>
+          </div>
 
-      <Card className="glass-card" styles={{ body: { padding: 22 } }}>
-        <Table<ProjectRow> rowKey="id" loading={loading} columns={columns} dataSource={projects} pagination={{ pageSize: 6 }} />
-      </Card>
+          <Table<ProjectRow>
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={projects}
+            pagination={{ pageSize: 8 }}
+          />
+        </section>
 
-      <Drawer title={TEXT.draftTitle} open={drawerOpen} width={760} onClose={() => setDrawerOpen(false)} destroyOnClose>
-        <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-          {TEXT.draftDesc}
+        <Space direction="vertical" size={18} className="sticky-stack" style={{ width: "100%" }}>
+          <section className="section-surface">
+            <Space direction="vertical" size={12} style={{ width: "100%" }}>
+              <Typography.Title level={4} className="section-title">
+                填报提示
+              </Typography.Title>
+              <div className="soft-link-list">
+                <div className="soft-link-item">
+                  <strong>先建草稿，再完成页签填报</strong>
+                  <span>草稿页会自动保存，可以分次完成问题、技术方案、预算和附件整理。</span>
+                </div>
+                <div className="soft-link-item">
+                  <strong>审批通过后直接输出</strong>
+                  <span>人工审批通过的版本可直接打开最终审核报告、可行性报告和工程量清单。</span>
+                </div>
+              </div>
+            </Space>
+          </section>
+
+          {isSubmitter ? (
+            <section className="section-surface">
+              <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                <Typography.Title level={4} className="section-title">
+                  额度和冷却规则
+                </Typography.Title>
+                <div className="summary-grid">
+                  <div className="summary-item">
+                    <Typography.Text className="summary-label">本周 AI 额度</Typography.Text>
+                    <strong>{quota ? `${quota.remaining} / ${quota.policy.weeklyQuotaPerCity}` : "--"}</strong>
+                  </div>
+                  <div className="summary-item">
+                    <Typography.Text className="summary-label">已使用</Typography.Text>
+                    <strong>{quota?.used ?? 0}</strong>
+                    <Typography.Text type="secondary">
+                      {`退回后冷却 ${quota?.policy.resubmitCooldownDays ?? 3} 天`}
+                    </Typography.Text>
+                  </div>
+                </div>
+              </Space>
+            </section>
+          ) : (
+            <section className="section-surface">
+              <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                <Typography.Title level={4} className="section-title">
+                  审批视角
+                </Typography.Title>
+                <div className="summary-grid">
+                  <div className="summary-item">
+                    <Typography.Text className="summary-label">人工已通过</Typography.Text>
+                    <strong>{stats.approved}</strong>
+                    <Typography.Text type="secondary">
+                      可直接打开正式成果页面与导出文件
+                    </Typography.Text>
+                  </div>
+                  <div className="summary-item">
+                    <Typography.Text className="summary-label">重复风险项</Typography.Text>
+                    <strong>{stats.duplicate}</strong>
+                    <Typography.Text type="secondary">
+                      进入项目后可直接查看 AI 重复改造识别说明
+                    </Typography.Text>
+                  </div>
+                </div>
+              </Space>
+            </section>
+          )}
+        </Space>
+      </div>
+
+      <Drawer
+        title="创建立项草稿"
+        open={drawerOpen}
+        width={520}
+        forceRender
+        onClose={() => {
+          setDrawerOpen(false);
+          form.resetFields();
+        }}
+      >
+        <Typography.Paragraph className="section-copy">
+          先确认项目基线、位置和问题来源，其他细项会在后续分区填报页里自动保存完成。
         </Typography.Paragraph>
-        <Form layout="vertical" form={form} initialValues={initialForm} onFinish={createProject}>
+
+        <Form form={form} layout="vertical" initialValues={initialForm} onFinish={createProject}>
+          <Form.Item
+            name="projectName"
+            label="项目名称"
+            rules={[{ required: true, message: "请输入项目名称" }]}
+          >
+            <Input placeholder="例如：地下车库排水沟维修改造" />
+          </Form.Item>
+
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="projectName" label={"\u9879\u76ee\u540d\u79f0"} rules={[{ required: true, message: "\u8bf7\u8f93\u5165\u9879\u76ee\u540d\u79f0" }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="projectCategory" label={"\u6539\u9020\u7c7b\u522b"} rules={[{ required: true, message: "\u8bf7\u9009\u62e9\u6539\u9020\u7c7b\u522b" }]}>
+              <Form.Item name="projectCategory" label="改造类别" rules={[{ required: true }]}>
                 <Select options={projectCategoryOptions} />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item name="priority" label={"\u4f18\u5148\u7ea7"} rules={[{ required: true, message: "\u8bf7\u9009\u62e9\u4f18\u5148\u7ea7" }]}>
+            <Col span={12}>
+              <Form.Item name="priority" label="优先级" rules={[{ required: true }]}>
                 <Select options={priorityOptions} />
               </Form.Item>
             </Col>
-            <Col span={16}>
-              <Form.Item name="budgetAmount" label={"\u7533\u62a5\u603b\u9884\u7b97\uff08\u5143\uff09"} rules={[{ required: true, message: "\u8bf7\u8f93\u5165\u9884\u7b97" }]}>
-                <InputNumber style={{ width: "100%" }} min={0} />
-              </Form.Item>
-            </Col>
+          </Row>
+
+          <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="expectedStartDate" label={"\u8ba1\u5212\u5f00\u5de5\u65f6\u95f4"} rules={[{ required: true, message: "\u8bf7\u9009\u62e9\u5f00\u5de5\u65f6\u95f4" }]}>
+              <Form.Item name="expectedStartDate" label="计划开工" rules={[{ required: true }]}>
                 <Input type="date" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="expectedEndDate" label={"\u8ba1\u5212\u5b8c\u5de5\u65f6\u95f4"} rules={[{ required: true, message: "\u8bf7\u9009\u62e9\u5b8c\u5de5\u65f6\u95f4" }]}>
+              <Form.Item name="expectedEndDate" label="计划完工" rules={[{ required: true }]}>
                 <Input type="date" />
               </Form.Item>
             </Col>
+          </Row>
+
+          <Form.Item name="budgetAmount" label="申报预算（元）" rules={[{ required: true }]}>
+            <InputNumber style={{ width: "100%" }} min={0} />
+          </Form.Item>
+
+          <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="propertyName" label={"\u697c\u76d8/\u9879\u76ee"} rules={[{ required: true, message: "\u8bf7\u8f93\u5165\u697c\u76d8/\u9879\u76ee" }]}>
+              <Form.Item name="propertyName" label="楼盘 / 项目" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="building" label={"\u697c\u680b"}>
+              <Form.Item name="building" label="楼栋">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="floor" label="楼层">
                 <Input />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="floor" label={"\u697c\u5c42"}>
+              <Form.Item name="area" label="区域 / 系统">
                 <Input />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="area" label={"\u533a\u57df/\u7cfb\u7edf"}>
+              <Form.Item name="room" label="房间 / 点位">
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item name="room" label={"\u623f\u95f4/\u70b9\u4f4d"}>
-                <Input />
-              </Form.Item>
-            </Col>
+          </Row>
+          <Form.Item name="equipmentPoint" label="设备 / 组件">
+            <Input />
+          </Form.Item>
+
+          <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="equipmentPoint" label={"\u8bbe\u5907/\u7ec4\u4ef6"}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="issueSourceType" label={"\u95ee\u9898\u6765\u6e90"} rules={[{ required: true, message: "\u8bf7\u9009\u62e9\u95ee\u9898\u6765\u6e90" }]}>
+              <Form.Item name="issueSourceType" label="问题来源" rules={[{ required: true }]}>
                 <Select options={issueSourceOptions} />
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="issueDescription" label={"\u95ee\u9898\u63cf\u8ff0"} rules={[{ required: true, message: "\u8bf7\u7b80\u8981\u8bf4\u660e\u95ee\u9898" }]}>
-            <Input.TextArea rows={4} />
+
+          <Form.Item
+            name="issueDescription"
+            label="问题描述"
+            rules={[{ required: true, message: "请输入问题描述" }]}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder="简要说明问题现象、影响范围和立项背景"
+            />
           </Form.Item>
-          <Space>
-            <Button onClick={() => setDrawerOpen(false)}>{"\u53d6\u6d88"}</Button>
-            <Button type="primary" htmlType="submit" loading={saving}>
-              {TEXT.createDraft}
-            </Button>
-          </Space>
+
+          <Button type="primary" htmlType="submit" loading={saving} block style={{ height: 46 }}>
+            创建草稿并进入填报
+          </Button>
         </Form>
       </Drawer>
     </div>

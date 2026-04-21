@@ -37,6 +37,13 @@ export type UrgencyLevel = "low" | "medium" | "high" | "critical";
 export type AttachmentSlotKey = "issue_photos" | "fault_registry" | "drawings" | "supplementary";
 
 export type ReviewSeverity = "high" | "medium" | "low";
+export type ReviewModule = "compliance" | "cost" | "technical" | "general";
+export type AdvisoryRecommendationKind =
+  | "general"
+  | "optimization"
+  | "question"
+  | "must_keep"
+  | "alternative_path";
 
 export type SubmissionBlockReason =
   | "weekly_quota_reached"
@@ -45,6 +52,22 @@ export type SubmissionBlockReason =
   | "already_submitted";
 
 export type CostRowType = "engineering" | "other_fee";
+
+export type RiskFlagKey =
+  | "powerOrWaterShutdown"
+  | "fireSystemImpact"
+  | "hotWork"
+  | "workingAtHeight"
+  | "concealedWork"
+  | "nightWork"
+  | "occupiedAreaImpact"
+  | "thirdPartyTesting";
+
+export type RiskFlags = Partial<Record<RiskFlagKey, boolean>>;
+
+export type CategorySpecificFields = Partial<
+  Record<ProjectCategory, Record<string, string | number | boolean>>
+>;
 
 export interface QuotaPolicy {
   weeklyQuotaPerCity: number;
@@ -173,6 +196,8 @@ export interface FormSnapshot {
   expectedBenefits: string;
   supplementaryNotes: string;
   costMatrixRows: CostMatrixRow[];
+  riskFlags?: RiskFlags;
+  categorySpecificFields?: CategorySpecificFields;
 }
 
 export interface ReviewFinding {
@@ -184,10 +209,85 @@ export interface ReviewFinding {
   requiredMaterials: string[];
 }
 
+export interface NormCitation {
+  id: string;
+  packId?: string;
+  code: string;
+  title: string;
+  clause: string;
+  summary: string;
+  applicableModules: ReviewModule[];
+}
+
+export interface MandatoryRequirement {
+  severity: ReviewSeverity;
+  title: string;
+  requirement: string;
+  reason: string;
+  citationIds: string[];
+  writebackText: string;
+  requiredMaterials: string[];
+}
+
+export interface InternalControlRequirement {
+  id: string;
+  severity: ReviewSeverity;
+  title: string;
+  requirement: string;
+  reason: string;
+  action: string;
+  requiredMaterials: string[];
+  source: "platform_policy" | "skill_pack";
+  ruleId?: string;
+  writebackText?: string;
+}
+
+export interface AdvisoryRecommendation {
+  id: string;
+  title: string;
+  recommendation: string;
+  reason: string;
+  requiredMaterials: string[];
+  kind?: AdvisoryRecommendationKind;
+  priority?: ReviewSeverity;
+  moduleHints?: ReviewModule[];
+}
+
+export interface SchemeWritebackCandidate {
+  id: string;
+  title: string;
+  targetSection: string;
+  text: string;
+  basis: string;
+  citationIds: string[];
+  autoApplied: boolean;
+  sourceModule?: ReviewModule;
+}
+
+export interface CostEstimateRange {
+  id: string;
+  itemName: string;
+  basis: string;
+  currentAmount?: number;
+  suggestedMin?: number;
+  suggestedMax?: number;
+  optimizationSpace: string;
+  requiresManualReview: boolean;
+  relatedRuleIds: string[];
+}
+
 export interface ReviewSection {
   title: string;
+  summary?: string;
   conclusion: string;
   findings: ReviewFinding[];
+  mandatoryItems?: MandatoryRequirement[];
+  advisoryItems?: AdvisoryRecommendation[];
+  schemeCandidates?: SchemeWritebackCandidate[];
+  mustKeepItems?: string[];
+  optimizationCandidates?: AdvisoryRecommendation[];
+  costQuestions?: string[];
+  alternativePaths?: AdvisoryRecommendation[];
 }
 
 export interface DuplicateRemodelingMatch {
@@ -215,6 +315,14 @@ export interface AIReviewResult {
   complianceReview: ReviewSection;
   costReview: ReviewSection;
   technicalReview: ReviewSection;
+  citations?: NormCitation[];
+  mandatoryRequirements?: MandatoryRequirement[];
+  internalControlRequirements?: InternalControlRequirement[];
+  advisoryRecommendations?: AdvisoryRecommendation[];
+  advisoryWritebackCandidates?: SchemeWritebackCandidate[];
+  schemeWritebacks?: SchemeWritebackCandidate[];
+  costEstimateRanges?: CostEstimateRange[];
+  skillPackVersion?: string;
   duplicateReview: {
     title: string;
     conclusion: string;
@@ -232,6 +340,7 @@ export interface HumanDecision {
   reviewerId: string;
   decision: "approved" | "returned";
   comment: string;
+  selectedWritebackIds?: string[];
   decidedAt: string;
 }
 
@@ -518,6 +627,16 @@ export function createId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export function createStableId(prefix: string, parts: Array<string | number | boolean | undefined | null>): string {
+  const raw = parts.map((part) => String(part ?? "")).join("|").toLowerCase();
+  let hash = 2166136261;
+  for (let index = 0; index < raw.length; index += 1) {
+    hash ^= raw.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${prefix}_${(hash >>> 0).toString(36)}`;
+}
+
 export function roundMoney(value: number): number {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
@@ -544,6 +663,19 @@ export function createEmptyCostMatrixRow(type: CostRowType = "engineering"): Cos
     quantity: type === "other_fee" ? 1 : 0,
     unitPrice: 0,
     remark: ""
+  };
+}
+
+export function createEmptyRiskFlags(): RiskFlags {
+  return {
+    powerOrWaterShutdown: false,
+    fireSystemImpact: false,
+    hotWork: false,
+    workingAtHeight: false,
+    concealedWork: false,
+    nightWork: false,
+    occupiedAreaImpact: false,
+    thirdPartyTesting: false
   };
 }
 
@@ -579,7 +711,9 @@ export function createEmptyFormSnapshot(): FormSnapshot {
     initialBudgetExplanation: "",
     expectedBenefits: "",
     supplementaryNotes: "",
-    costMatrixRows: []
+    costMatrixRows: [],
+    riskFlags: createEmptyRiskFlags(),
+    categorySpecificFields: {}
   };
 }
 

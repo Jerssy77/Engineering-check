@@ -9,29 +9,53 @@ import {
 import {
   AIReviewResult,
   Attachment,
+  AttachmentParseResult,
   CostMatrixRow,
   DuplicateComparisonRecord,
   FormSnapshot,
+  HumanDecision,
+  Organization,
   ProjectAggregate,
   ProjectVersion,
   ReviewVerdict,
   SessionUser,
   VERDICT_LABELS,
+  VersionAttachmentSlot,
   buildVersionAttachmentSlots,
   calculateBudgetSummary,
   calculateSubmissionEligibility,
   createEmptyFormSnapshot,
+  createEmptyRiskFlags,
   createId,
   findDuplicateProjects,
   formatChinaDateTime,
   summarizeLocation
 } from "@property-review/shared";
+import ExcelJS from "exceljs";
 
 import { AiReviewService } from "../shared/ai-review.service";
 import { DemoDataService } from "../shared/demo-data.service";
 import { PdfService } from "../shared/pdf.service";
+import { normalizeAiReview } from "../shared/review-normalization";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { HumanDecisionDto } from "./dto/human-decision.dto";
+import {
+  BillOfQuantitiesPayload,
+  ConstructionPlanPayload,
+  FinalReviewReportPayload,
+  FeasibilityReportPayload,
+  ReportContext,
+  ReviewerSummary,
+  buildAiReviewPdfDocument,
+  buildBillOfQuantities,
+  buildBillOfQuantitiesPdfDocument,
+  buildConstructionPlan,
+  buildConstructionPlanPdfDocument,
+  buildFeasibilityReport,
+  buildFeasibilityPdfDocument,
+  buildFinalReviewPdfDocument,
+  buildFinalReviewReport
+} from "./report-builders";
 import { SubmitProjectDto } from "./dto/submit-project.dto";
 import { UpdateVersionDto } from "./dto/update-version.dto";
 
@@ -74,6 +98,15 @@ function mergeSnapshot(snapshot: FormSnapshot, dto: UpdateVersionDto): FormSnaps
     location: {
       ...snapshot.location,
       ...(dto.location ?? {})
+    },
+    riskFlags: {
+      ...createEmptyRiskFlags(),
+      ...(snapshot.riskFlags ?? {}),
+      ...(dto.riskFlags ?? {})
+    },
+    categorySpecificFields: {
+      ...(snapshot.categorySpecificFields ?? {}),
+      ...(dto.categorySpecificFields ?? {})
     },
     costMatrixRows: dto.costMatrixRows ? normalizeCostMatrixRows(dto.costMatrixRows) : snapshot.costMatrixRows
   };
@@ -224,6 +257,8 @@ export class ProjectsService implements OnModuleInit {
       snapshot: {
         ...currentVersion.snapshot,
         location: { ...currentVersion.snapshot.location },
+        riskFlags: { ...(currentVersion.snapshot.riskFlags ?? {}) },
+        categorySpecificFields: JSON.parse(JSON.stringify(currentVersion.snapshot.categorySpecificFields ?? {})) as FormSnapshot["categorySpecificFields"],
         costMatrixRows: currentVersion.snapshot.costMatrixRows.map((item) => ({ ...item }))
       },
       createdBy: user.id,
@@ -378,7 +413,7 @@ export class ProjectsService implements OnModuleInit {
     const parseResults = aggregate.attachmentParseResults.filter((item) =>
       attachments.some((attachment) => attachment.id === item.attachmentId)
     );
-    const review = aggregate.aiReviews.find((item) => item.versionId === versionId);
+    const review = normalizeAiReview(aggregate.aiReviews.find((item) => item.versionId === versionId));
     const decision = aggregate.humanDecisions.find((item) => item.versionId === versionId);
 
     return {
@@ -402,55 +437,225 @@ export class ProjectsService implements OnModuleInit {
   }
 
   async downloadReportPdf(projectId: string, versionId: string, user: SessionUser) {
-    const report = this.getReport(projectId, versionId, user);
-    if (!report.review) {
+    const context = this.getReportContext(projectId, versionId, user);
+    if (!context.review) {
       throw new NotFoundException("该版本暂无 AI 结论");
     }
 
-    const lines: string[] = [
-      `项目：${report.version.snapshot.projectName}`,
-      `版本：V${report.version.versionNumber}`,
-      `结论：${VERDICT_LABELS[report.review.verdict]}`,
-      `总分：${report.review.overallScore}`,
-      `位置：${summarizeLocation(report.version.snapshot.location)}`,
-      `申报总预算：${report.budgetSummary.declaredBudget} 元`,
-      `矩阵汇总总价：${report.budgetSummary.calculatedBudget} 元`,
-      "",
-      "总体结论：",
-      report.review.conclusion,
-      "",
-      "合规合法性审核：",
-      report.review.complianceReview.conclusion,
-      ...report.review.complianceReview.findings.map(
-        (item) => `- ${item.title}：${item.currentState}；修改动作：${item.action}`
-      ),
-      "",
-      "成本节约与费用合理性分析：",
-      report.review.costReview.conclusion,
-      ...report.review.costReview.findings.map(
-        (item) => `- ${item.title}：${item.currentState}；修改动作：${item.action}`
-      ),
-      "",
-      "技术审核与专业建议：",
-      report.review.technicalReview.conclusion,
-      ...report.review.technicalReview.findings.map(
-        (item) => `- ${item.title}：${item.currentState}；修改动作：${item.action}`
-      ),
-      "",
-      "重复改造识别：",
-      report.review.duplicateReview.conclusion,
-      ...report.review.duplicateReview.matches.map(
-        (item) => `- ${item.projectTitle} / V${item.versionNumber} / ${item.matchReason}`
-      ),
-      "",
-      "需补充材料：",
-      ...(report.review.missingMaterials.length ? report.review.missingMaterials.map((item) => `- ${item}`) : ["- 无"]),
-      "",
-      "必改动作：",
-      ...(report.review.requiredActions.length ? report.review.requiredActions.map((item) => `- ${item}`) : ["- 无"])
+    return this.pdfService.createReportPdf(buildAiReviewPdfDocument(context));
+  }
+
+  getFinalReviewReport(projectId: string, versionId: string, user: SessionUser): FinalReviewReportPayload {
+    return buildFinalReviewReport(this.getReportContext(projectId, versionId, user));
+  }
+
+  getFeasibilityReport(projectId: string, versionId: string, user: SessionUser): FeasibilityReportPayload {
+    const context = this.getReportContext(projectId, versionId, user);
+    this.ensureApprovedOutput(context.version);
+    return buildFeasibilityReport(context);
+  }
+
+  getBillOfQuantities(projectId: string, versionId: string, user: SessionUser): BillOfQuantitiesPayload {
+    const context = this.getReportContext(projectId, versionId, user);
+    this.ensureApprovedOutput(context.version);
+    return buildBillOfQuantities(context);
+  }
+
+  getConstructionPlan(projectId: string, versionId: string, user: SessionUser): ConstructionPlanPayload {
+    const context = this.getReportContext(projectId, versionId, user);
+    this.ensureApprovedOutput(context.version);
+    return buildConstructionPlan(context);
+  }
+
+  async downloadFinalReviewReportPdf(projectId: string, versionId: string, user: SessionUser) {
+    const report = this.getFinalReviewReport(projectId, versionId, user);
+    return this.pdfService.createReportPdf(buildFinalReviewPdfDocument(report));
+  }
+
+  async downloadFeasibilityReportPdf(projectId: string, versionId: string, user: SessionUser) {
+    const report = this.getFeasibilityReport(projectId, versionId, user);
+    return this.pdfService.createReportPdf(buildFeasibilityPdfDocument(report));
+  }
+
+  async downloadBillOfQuantitiesPdf(projectId: string, versionId: string, user: SessionUser) {
+    const report = this.getBillOfQuantities(projectId, versionId, user);
+    return this.pdfService.createReportPdf(buildBillOfQuantitiesPdfDocument(report));
+  }
+
+  async downloadConstructionPlanPdf(projectId: string, versionId: string, user: SessionUser) {
+    const report = this.getConstructionPlan(projectId, versionId, user);
+    return this.pdfService.createReportPdf(buildConstructionPlanPdfDocument(report));
+  }
+
+  async downloadBillOfQuantitiesExcel(projectId: string, versionId: string, user: SessionUser) {
+    const report = this.getBillOfQuantities(projectId, versionId, user);
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "工程立项审批平台";
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet("工程量清单", {
+      views: [{ state: "frozen", ySplit: 1 }]
+    });
+
+    const headers = ["序号", "分类", "项目名称", "规格型号", "单位", "工程量", "单价（元）", "合价（元）", "备注"];
+    const headerRow = sheet.addRow(headers);
+    headerRow.height = 24;
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4ED8" } };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFBFDBFE" } },
+        left: { style: "thin", color: { argb: "FFBFDBFE" } },
+        bottom: { style: "thin", color: { argb: "FFBFDBFE" } },
+        right: { style: "thin", color: { argb: "FFBFDBFE" } }
+      };
+    });
+
+    report.rows.forEach((row, index) => {
+      const dataRow = sheet.addRow([
+        index + 1,
+        row.typeLabel,
+        row.itemName,
+        row.specification || "",
+        row.unit || "",
+        row.quantity,
+        row.unitPrice,
+        row.lineTotal,
+        row.remark || ""
+      ]);
+
+      dataRow.eachCell((cell, colNumber) => {
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFD1D5DB" } },
+          left: { style: "thin", color: { argb: "FFD1D5DB" } },
+          bottom: { style: "thin", color: { argb: "FFD1D5DB" } },
+          right: { style: "thin", color: { argb: "FFD1D5DB" } }
+        };
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: colNumber >= 6 && colNumber <= 8 ? "right" : colNumber === 1 ? "center" : "left",
+          wrapText: true
+        };
+        cell.font = { size: 10, color: { argb: "FF1F2937" } };
+      });
+    });
+
+    const summaryStart = sheet.rowCount + 2;
+    const summaryRows: Array<[string, number]> = [
+      ["工程项小计", report.budgetSummary.engineeringSubtotal],
+      ["其他费用小计", report.budgetSummary.otherFeeSubtotal],
+      ["矩阵测算总价", report.budgetSummary.calculatedBudget],
+      ["申报总预算", report.budgetSummary.declaredBudget],
+      ["预算差额", report.budgetSummary.budgetGap]
     ];
 
-    return this.pdfService.createReportPdf("物业工程立项 AI 审核报告", lines);
+    summaryRows.forEach(([label, value], index) => {
+      const row = sheet.getRow(summaryStart + index);
+      row.getCell(7).value = label;
+      row.getCell(8).value = value;
+      row.getCell(7).font = { bold: true, size: 10, color: { argb: "FF1E3A8A" } };
+      row.getCell(8).font = { bold: true, size: 10, color: { argb: "FF1E3A8A" } };
+      row.getCell(7).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFF6FF" } };
+      row.getCell(8).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFF6FF" } };
+      row.getCell(7).alignment = { horizontal: "right", vertical: "middle" };
+      row.getCell(8).alignment = { horizontal: "right", vertical: "middle" };
+    });
+
+    const noteRow = summaryStart + summaryRows.length;
+    sheet.getCell(`G${noteRow}`).value = "说明";
+    sheet.getCell(`H${noteRow}`).value = report.declaredBudgetNote;
+    sheet.getCell(`G${noteRow}`).font = { bold: true, size: 10, color: { argb: "FF1E3A8A" } };
+    sheet.getCell(`H${noteRow}`).font = { size: 10, color: { argb: "FF1E3A8A" } };
+    sheet.getCell(`H${noteRow}`).alignment = { wrapText: true, horizontal: "left" };
+
+    sheet.columns = [
+      { width: 8 },
+      { width: 12 },
+      { width: 24 },
+      { width: 22 },
+      { width: 12 },
+      { width: 12 },
+      { width: 14 },
+      { width: 14 },
+      { width: 24 }
+    ];
+
+    sheet.getColumn(6).numFmt = "#,##0.###";
+    sheet.getColumn(7).numFmt = "#,##0.00";
+    sheet.getColumn(8).numFmt = "#,##0.00";
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  }
+
+  private getReportContext(projectId: string, versionId: string, user: SessionUser): ReportContext {
+    const aggregate = this.data.getAggregate(projectId);
+    this.ensureProjectAccess(user, aggregate.project.organizationId);
+    const version = aggregate.versions.find((item) => item.id === versionId);
+    if (!version) {
+      throw new NotFoundException("版本不存在");
+    }
+
+    const attachments = aggregate.attachments.filter((item) => item.versionId === versionId);
+    const parseResults = aggregate.attachmentParseResults.filter((item) =>
+      attachments.some((attachment) => attachment.id === item.attachmentId)
+    );
+    const review = normalizeAiReview(aggregate.aiReviews.find((item) => item.versionId === versionId));
+    const decision = aggregate.humanDecisions.find((item) => item.versionId === versionId);
+    const organization = this.data.getOrganizations().find((item) => item.id === aggregate.project.organizationId);
+    const reviewer = decision ? this.getReviewerSummary(decision, organization) : undefined;
+
+    return {
+      project: aggregate.project,
+      version,
+      review,
+      decision,
+      attachments,
+      parseResults,
+      attachmentSlots: buildVersionAttachmentSlots({
+        category: version.snapshot.projectCategory,
+        sourceType: version.snapshot.issueSourceType,
+        attachments
+      }),
+      budgetSummary: calculateBudgetSummary({
+        costMatrixRows: version.snapshot.costMatrixRows,
+        declaredBudget: version.snapshot.budgetAmount
+      }),
+      organization,
+      reviewer
+    };
+  }
+
+  private getReviewerSummary(
+    decision: HumanDecision,
+    organization?: Organization
+  ): ReviewerSummary {
+    const reviewer = this.data.getUsers().find((item) => item.id === decision.reviewerId);
+    if (!reviewer) {
+      return {
+        id: decision.reviewerId,
+        displayName: "未知审核人",
+        role: "reviewer",
+        organizationName: organization?.name ?? "未分配组织"
+      };
+    }
+
+    const reviewerOrganization =
+      this.data.getOrganizations().find((item) => item.id === reviewer.organizationId) ?? organization;
+
+    return {
+      id: reviewer.id,
+      displayName: reviewer.displayName,
+      role: reviewer.role,
+      organizationName: reviewerOrganization?.name ?? "未分配组织"
+    };
+  }
+
+  private ensureApprovedOutput(version: ProjectVersion): void {
+    if (version.status !== "human_approved") {
+      throw new BadRequestException("仅人工审核通过的版本可生成正式成果物。");
+    }
   }
 
   private resumePendingAiReviews(): void {
@@ -598,6 +803,13 @@ export class ProjectsService implements OnModuleInit {
 
     const now = new Date().toISOString();
     const nextStatus = dto.decision === "approved" ? "human_approved" : "human_returned";
+    const allowedWritebackIds = new Set(
+      (report.review.advisoryWritebackCandidates ?? []).map((item) => item.id)
+    );
+    const selectedWritebackIds =
+      dto.decision === "approved"
+        ? (dto.selectedWritebackIds ?? []).filter((item) => allowedWritebackIds.has(item))
+        : [];
     this.data.updateVersion(versionId, (current) => ({
       ...current,
       status: nextStatus,
@@ -615,6 +827,7 @@ export class ProjectsService implements OnModuleInit {
       reviewerId: user.id,
       decision: dto.decision,
       comment: dto.comment,
+      selectedWritebackIds,
       decidedAt: now
     });
     this.data.addAuditLog({

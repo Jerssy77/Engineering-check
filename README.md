@@ -190,9 +190,11 @@ PDF_FONT_PATH="./apps/api/assets/fonts/NotoSansSC-Regular.otf"
 - `property-review-api`
 - `property-review-web`
 
-仓库里已经提供了根目录的 `render.yaml`，默认面向“内部演示版”场景：
+仓库里已经提供了根目录的 `render.yaml`，默认面向“内部试运行版”场景：
 
-- 继续使用 demo 内存数据，不依赖 Postgres、Redis、MinIO
+- 继续使用单机文件落盘方案，不依赖 Postgres、Redis、MinIO
+- API 服务声明 5GB persistent disk，挂载到 `/opt/render/project/src/runtime-data`
+- 结构化数据写入 `APP_DATA_FILE`，附件写入 `APP_UPLOAD_DIR`
 - API 服务监听 Render 分配端口并提供 `/health` 健康检查
 - Web 服务从根目录构建，不把 monorepo 截断到 `apps/web`
 - 两个服务都带了 build filter，只有相关目录变更时才自动重建
@@ -238,6 +240,10 @@ git commit -m "Prepare Render deployment"
   - `API_HOST=0.0.0.0`
   - `AI_PROVIDER=auto`
   - `APP_TIMEZONE=Asia/Shanghai`
+  - `APP_DATA_FILE=/opt/render/project/src/runtime-data/app-state.json`
+  - `APP_UPLOAD_DIR=/opt/render/project/src/runtime-data/uploads`
+  - `ATTACHMENT_MAX_SIZE_BYTES=524288`
+  - `NON_PHOTO_ATTACHMENTS_MAX_TOTAL_BYTES=2097152`
 - Web：
   - `WEB_HOST=0.0.0.0`
 
@@ -267,5 +273,6 @@ git commit -m "Prepare Render deployment"
 ### 6. 演示版注意事项
 
 - Render 免费实例空闲一段时间后会休眠，首次访问会有冷启动延迟
-- 当前数据仍然是内存态，重新部署或服务重启后会恢复为演示种子数据
-- 如果以后要公开仓库或长期多人使用，先移除演示账号信息并补齐真实认证、数据库持久化和对象存储
+- API 的试运行数据会保存在 persistent disk 挂载目录下，正常重新部署和服务重启不会清空历史数据
+- 不要删除 API 服务的 persistent disk，也不要把 `APP_DATA_FILE` / `APP_UPLOAD_DIR` 改到非挂载目录，否则新数据会落到临时文件系统
+- 如果以后要公开仓库或长期多人使用，先移除演示账号信息，并逐步补齐真实认证、数据库持久化、对象存储和定期备份
