@@ -9,6 +9,7 @@ import {
 interface BuiltInNormCitation extends NormCitation {
   categories?: ProjectCategory[];
   keywords?: string[];
+  riskFlags?: string[];
 }
 
 const NATIONAL_PACK_ID = "national-starter-pack";
@@ -124,6 +125,10 @@ const NATIONAL_NORM_PACK: BuiltInNormCitation[] = [
 ];
 
 function buildSearchText(snapshot: FormSnapshot, parseResults: AttachmentParseResult[] = []): string {
+  const activeRiskFlags = Object.entries(snapshot.riskFlags ?? {})
+    .filter(([, enabled]) => Boolean(enabled))
+    .map(([key]) => key);
+
   return [
     snapshot.projectName,
     snapshot.issueDescription,
@@ -138,10 +143,34 @@ function buildSearchText(snapshot: FormSnapshot, parseResults: AttachmentParseRe
     snapshot.sampleFirstRequirement,
     snapshot.detailDrawingRequirement,
     snapshot.thirdPartyTestingRequirement,
+    ...activeRiskFlags,
+    ...flattenObjectValues(snapshot.categorySpecificFields),
     ...parseResults.map((item) => item.summary ?? item.extractedText ?? "")
   ]
     .join(" ")
     .toLowerCase();
+}
+
+function flattenObjectValues(value: unknown): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  return Object.values(value).flatMap((item) => {
+    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+      return [String(item)];
+    }
+    return flattenObjectValues(item);
+  });
+}
+
+function countKeywordHits(citation: BuiltInNormCitation, haystack: string): number {
+  return (citation.keywords ?? []).filter((keyword) => haystack.includes(keyword.toLowerCase())).length;
+}
+
+function countRiskFlagHits(citation: BuiltInNormCitation, snapshot: FormSnapshot): number {
+  const flags = snapshot.riskFlags as Record<string, boolean | undefined> | undefined;
+  return (citation.riskFlags ?? []).filter((flag) => Boolean(flags?.[flag])).length;
 }
 
 function scoreCitation(
@@ -149,17 +178,36 @@ function scoreCitation(
   snapshot: FormSnapshot,
   haystack: string
 ): number {
-  let score = 0;
+  const keywordHits = countKeywordHits(citation, haystack);
+  const riskFlagHits = countRiskFlagHits(citation, snapshot);
+  const hasCategoryScope = Boolean(citation.categories?.length);
+  const categoryMatches = !hasCategoryScope || citation.categories?.includes(snapshot.projectCategory);
 
-  if (!citation.categories || citation.categories.includes(snapshot.projectCategory)) {
-    score += 3;
+  if (hasCategoryScope && !categoryMatches && riskFlagHits === 0) {
+    return 0;
   }
 
-  score += (citation.keywords ?? []).filter((keyword) => haystack.includes(keyword.toLowerCase())).length * 2;
+  if (hasCategoryScope) {
+    if (riskFlagHits === 0 && keywordHits < 2) {
+      return 0;
+    }
+    if (riskFlagHits > 0 && keywordHits === 0) {
+      return 0;
+    }
+
+    return (categoryMatches ? 4 : 0) + keywordHits * 3 + riskFlagHits * 4;
+  }
+
+  if (keywordHits < 2 && riskFlagHits === 0) {
+    return 0;
+  }
+
+  let score = keywordHits * 3 + riskFlagHits * 4;
 
   if (
     citation.applicableModules.includes("cost") &&
-    snapshot.projectCategory === "energy_retrofit"
+    snapshot.projectCategory === "energy_retrofit" &&
+    keywordHits > 0
   ) {
     score += 1;
   }

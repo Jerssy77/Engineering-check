@@ -275,6 +275,24 @@ function dedupeBy<T>(items: T[], keyOf: (item: T) => string): T[] {
   });
 }
 
+function hasAllowedCitation(
+  item: MandatoryRequirement | SchemeWritebackCandidate | NormCitation,
+  allowedCitationIds: Set<string>
+): boolean {
+  if ("citationIds" in item) {
+    return item.citationIds.some((id) => allowedCitationIds.has(id));
+  }
+
+  return allowedCitationIds.has(item.id);
+}
+
+function restrictSectionMandatoryItems(section: ReviewSection, allowedCitationIds: Set<string>): ReviewSection {
+  return {
+    ...section,
+    mandatoryItems: (section.mandatoryItems ?? []).filter((item) => hasAllowedCitation(item, allowedCitationIds))
+  };
+}
+
 function normalizeSection(value: unknown, fallback: ReviewSection): ReviewSection {
   if (!value || typeof value !== "object") {
     return fallback;
@@ -381,13 +399,16 @@ function mergeExternalReview(
     payload.duplicateReview && typeof payload.duplicateReview === "object"
       ? (payload.duplicateReview as Record<string, unknown>)
       : undefined;
+  const allowedCitationIds = new Set((fallback.citations ?? []).map((item) => item.id));
   const citations = Array.isArray(payload.citations)
-    ? payload.citations.map((item) => normalizeCitation(item)).filter((item): item is NormCitation => Boolean(item))
+    ? payload.citations
+        .map((item) => normalizeCitation(item))
+        .filter((item): item is NormCitation => item !== null && hasAllowedCitation(item, allowedCitationIds))
     : [];
   const mandatoryRequirements = Array.isArray(payload.mandatoryRequirements)
     ? payload.mandatoryRequirements
         .map((item) => normalizeMandatoryItem(item))
-        .filter((item): item is MandatoryRequirement => Boolean(item))
+        .filter((item): item is MandatoryRequirement => item !== null && hasAllowedCitation(item, allowedCitationIds))
     : [];
   const internalControlRequirements = Array.isArray(payload.internalControlRequirements)
     ? payload.internalControlRequirements
@@ -407,7 +428,7 @@ function mergeExternalReview(
   const schemeWritebacks = Array.isArray(payload.schemeWritebacks)
     ? payload.schemeWritebacks
         .map((item) => normalizeSchemeCandidate(item))
-        .filter((item): item is SchemeWritebackCandidate => Boolean(item))
+        .filter((item): item is SchemeWritebackCandidate => item !== null && hasAllowedCitation(item, allowedCitationIds))
     : [];
   const costEstimateRanges = Array.isArray(payload.costEstimateRanges)
     ? payload.costEstimateRanges
@@ -449,9 +470,18 @@ function mergeExternalReview(
       (item) => item.id
     ),
     skillPackVersion: asString(payload.skillPackVersion, fallback.skillPackVersion ?? ENGINEERING_REVIEW_SKILL_PACK_VERSION),
-    complianceReview: normalizeSection(payload.complianceReview, fallback.complianceReview),
-    costReview: normalizeSection(payload.costReview, fallback.costReview),
-    technicalReview: normalizeSection(payload.technicalReview, fallback.technicalReview),
+    complianceReview: restrictSectionMandatoryItems(
+      normalizeSection(payload.complianceReview, fallback.complianceReview),
+      allowedCitationIds
+    ),
+    costReview: restrictSectionMandatoryItems(
+      normalizeSection(payload.costReview, fallback.costReview),
+      allowedCitationIds
+    ),
+    technicalReview: restrictSectionMandatoryItems(
+      normalizeSection(payload.technicalReview, fallback.technicalReview),
+      allowedCitationIds
+    ),
     duplicateReview: {
       title: asString(duplicateReview?.title, fallback.duplicateReview.title),
       conclusion: asString(duplicateReview?.conclusion, fallback.duplicateReview.conclusion),
@@ -629,6 +659,7 @@ export class AiReviewService {
                 "你的输出必须区分强制规范要求与建议项。",
                 "平台内控硬性要求必须放入 internalControlRequirements，不得伪装成国家规范条文。",
                 "只有命中输入规范片段且能明确给出 citationIds 的内容，才允许进入 mandatoryRequirements 或各模块 mandatoryItems。",
+                "不得仅因为规范片段出现在上下文中就生成强制项；每条强制项必须能对应到本项目的类别、风险勾选、文本描述、附件摘要或专项字段。",
                 "没有明确规范依据的风险、优化建议或补充问题，一律降级为 advisoryRecommendations 或 advisoryItems。",
                 "成本审核不能只说参考市场价或历史价，要先理解方案意图，再识别冗余、过度配置、重复投入、可替代路径和施工组织优化空间；允许给经验区间，但必须标注需人工复核。",
                 "技术审核要判断路线是否闭环、是否过度、是否缺关键实施约束，并允许生成候选改写段落。",
