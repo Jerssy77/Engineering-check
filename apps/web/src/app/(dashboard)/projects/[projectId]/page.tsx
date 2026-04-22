@@ -236,6 +236,11 @@ function mergeFormSnapshot(
   };
 }
 
+function toUpdateVersionPayload(values: FormSnapshot): Partial<FormSnapshot> {
+  const { uploadedCostSheet: _uploadedCostSheet, ...payload } = values;
+  return payload;
+}
+
 function getFileAccept(slotKey: string): string | undefined {
   if (slotKey === "issue_photos") return "image/*";
   if (slotKey === "fault_registry") return ".xls,.xlsx,.csv";
@@ -412,7 +417,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
     if (!currentVersion) return null;
     const response = await apiRequest<ProjectDetailResponse>(
       `/projects/${routeParams.projectId}/versions/${currentVersion.id}`,
-      { method: "PATCH", body: JSON.stringify(values) },
+      { method: "PATCH", body: JSON.stringify(toUpdateVersionPayload(values)) },
       session
     );
     applyDetailResponse(response);
