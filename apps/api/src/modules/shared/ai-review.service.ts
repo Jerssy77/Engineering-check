@@ -690,6 +690,8 @@ export class AiReviewService {
                 "costReview.mustKeepItems 应写必须保留、不能轻易压缩的必要投入。",
                 "costReview.optimizationCandidates 只写有明确优化空间的项。",
                 "costReview.costQuestions 只写需要申报人补充说明的成本合理性问题。",
+                "当 costInputMode=upload 且 uploadedCostSheet 存在时，成本审核必须基于 uploadedCostSheet.rows 的全部有效明细、分组汇总、税费和最终总价判断；不要说“缺少在线矩阵”，也不要脱离上传清单泛泛要求市场询价。",
+                "上传清单模式下，重点识别高金额项、重复检测/重复保障、税费或汇总异常、规格过度、可替代做法和施工组织优化空间。",
                 "technicalReview.alternativePaths 只写更轻、更稳或更低扰动的替代路径建议。",
                 "duplicateReview.matches 只能基于输入 duplicateCandidates，不得虚构新项目。",
                 "如果没有明确 citationIds，不得生成 mandatoryItems，也不得把内容写进 schemeWritebacks。",

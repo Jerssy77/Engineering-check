@@ -6,6 +6,8 @@ import {
   BudgetSummary,
   CostEstimateRange,
   CostMatrixRow,
+  CostSheetParsedRow,
+  CostSheetSection,
   HumanDecision,
   InternalControlRequirement,
   MandatoryRequirement,
@@ -252,6 +254,7 @@ export interface BoqLineItem {
 
 export interface BillOfQuantitiesPayload {
   reportType: "bill-of-quantities";
+  sourceMode: "online" | "upload";
   project: {
     id: string;
     title: string;
@@ -266,6 +269,22 @@ export interface BillOfQuantitiesPayload {
   otherFeeRows: BoqLineItem[];
   budgetSummary: BudgetSummary;
   declaredBudgetNote: string;
+  uploadedSheetSummary?: {
+    attachmentId: string;
+    fileName: string;
+    parsedAt: string;
+    totalAmount?: number;
+    totalLabel?: string;
+    totalCell?: string;
+    totalSheetName?: string;
+    parsedSheetNames: string[];
+    detailRowCount: number;
+    sections: CostSheetSection[];
+    rows: CostSheetParsedRow[];
+    notes: string[];
+    warnings: string[];
+  };
+  originalAttachment?: Pick<Attachment, "id" | "fileName" | "mimeType" | "size">;
 }
 
 export interface ConstructionPlanPayload {
@@ -812,20 +831,27 @@ export function buildFeasibilityReport(context: ReportContext): FeasibilityRepor
 }
 
 export function buildBillOfQuantities(context: ReportContext): BillOfQuantitiesPayload {
-  const rows = buildBoqRows(context.version.snapshot.costMatrixRows);
+  const { snapshot } = context.version;
+  const rows = buildBoqRows(snapshot.costMatrixRows);
+  const sourceMode = snapshot.costInputMode === "upload" && snapshot.uploadedCostSheet ? "upload" : "online";
+  const uploadedSheet = sourceMode === "upload" ? snapshot.uploadedCostSheet : undefined;
+  const originalAttachment = uploadedSheet
+    ? context.attachments.find((item) => item.id === uploadedSheet.attachmentId)
+    : undefined;
 
   return {
     reportType: "bill-of-quantities",
+    sourceMode,
     project: {
       id: context.project.id,
       title: context.project.title,
       organizationName: context.organization?.name ?? "未分配组织",
       versionNumber: context.version.versionNumber,
-      categoryLabel: CATEGORY_LABELS[context.version.snapshot.projectCategory],
-      locationSummary: summarizeLocation(context.version.snapshot.location),
+      categoryLabel: CATEGORY_LABELS[snapshot.projectCategory],
+      locationSummary: summarizeLocation(snapshot.location),
       expectedWindow: formatDateRange(
-        context.version.snapshot.expectedStartDate,
-        context.version.snapshot.expectedEndDate
+        snapshot.expectedStartDate,
+        snapshot.expectedEndDate
       )
     },
     rows,
@@ -833,9 +859,36 @@ export function buildBillOfQuantities(context: ReportContext): BillOfQuantitiesP
     otherFeeRows: rows.filter((row) => row.type === "other_fee"),
     budgetSummary: context.budgetSummary,
     declaredBudgetNote:
-      context.budgetSummary.budgetGap === 0
-        ? "申报总预算与矩阵测算一致。"
-        : `申报总预算与矩阵测算存在 ${formatCurrency(context.budgetSummary.budgetGap)} 差额，正式执行前需复核。`
+      sourceMode === "upload"
+        ? "申报预算已按上传工程量清单识别总计同步，原始 Excel 为正式详细清单。"
+        : context.budgetSummary.budgetGap === 0
+          ? "申报总预算与矩阵测算一致。"
+          : `申报总预算与矩阵测算存在 ${formatCurrency(context.budgetSummary.budgetGap)} 差额，正式执行前需复核。`,
+    uploadedSheetSummary: uploadedSheet
+      ? {
+          attachmentId: uploadedSheet.attachmentId,
+          fileName: uploadedSheet.fileName,
+          parsedAt: uploadedSheet.parsedAt,
+          totalAmount: uploadedSheet.totalAmount,
+          totalLabel: uploadedSheet.totalLabel,
+          totalCell: uploadedSheet.totalCell,
+          totalSheetName: uploadedSheet.totalSheetName,
+          parsedSheetNames: uploadedSheet.parsedSheetNames,
+          detailRowCount: uploadedSheet.detailRowCount,
+          sections: uploadedSheet.sections,
+          rows: uploadedSheet.rows,
+          notes: uploadedSheet.notes,
+          warnings: uploadedSheet.warnings
+        }
+      : undefined,
+    originalAttachment: originalAttachment
+      ? {
+          id: originalAttachment.id,
+          fileName: originalAttachment.fileName,
+          mimeType: originalAttachment.mimeType,
+          size: originalAttachment.size
+        }
+      : undefined
   };
 }
 
@@ -1203,6 +1256,111 @@ export function buildFeasibilityPdfDocument(payload: FeasibilityReportPayload): 
 }
 
 export function buildBillOfQuantitiesPdfDocument(payload: BillOfQuantitiesPayload): PdfDocumentDefinition {
+  const uploadedSheet = payload.uploadedSheetSummary;
+  const uploadSections: PdfDocumentDefinition["sections"] =
+    payload.sourceMode === "upload" && uploadedSheet
+      ? [
+          {
+            title: "一、上传清单识别摘要",
+            blocks: [
+              {
+                type: "key-values" as const,
+                columns: 2,
+                items: [
+                  { label: "原始文件", value: uploadedSheet.fileName },
+                  { label: "识别工作表", value: uploadedSheet.parsedSheetNames?.join("、") ?? payload.project.title },
+                  { label: "明细行数", value: `${uploadedSheet.detailRowCount} 行` },
+                  { label: "识别总价", value: formatCurrency(uploadedSheet.totalAmount ?? 0) },
+                  { label: "总价位置", value: `${uploadedSheet.totalSheetName ?? "-"} ${uploadedSheet.totalCell ?? "-"}` },
+                  { label: "解析时间", value: formatDateOrFallback(uploadedSheet.parsedAt) }
+                ]
+              },
+              { type: "paragraph" as const, text: payload.declaredBudgetNote }
+            ]
+          },
+          {
+            title: "二、分组汇总",
+            blocks: [
+              {
+                type: "table" as const,
+                table: {
+                  headers: ["分组", "工作表", "行区间", "小计", "税费", "总计"],
+                  rows: uploadedSheet.sections.length
+                    ? uploadedSheet.sections.map((section) => [
+                        section.name,
+                        section.sheetName,
+                        `${section.startRow}-${section.endRow ?? section.startRow}`,
+                        section.subtotal === undefined ? "-" : formatCurrency(section.subtotal),
+                        section.tax === undefined ? "-" : formatCurrency(section.tax),
+                        section.total === undefined ? "-" : formatCurrency(section.total)
+                      ])
+                    : [["未识别到分组", "-", "-", "-", "-", "-"]],
+                  columnWidths: [30, 14, 12, 14, 14, 16],
+                  fontSize: 8
+                }
+              }
+            ]
+          },
+          {
+            title: "三、解析提示与原表说明",
+            blocks: [
+              {
+                type: "bullets" as const,
+                items: uploadedSheet.warnings.length
+                  ? uploadedSheet.warnings
+                  : ["清单已完成结构化解析，未发现影响总价识别的异常提示。"]
+              },
+              {
+                type: "bullets" as const,
+                items: uploadedSheet.notes.length ? uploadedSheet.notes : ["原始 Excel 作为正式详细工程量清单留存和下载。"]
+              }
+            ]
+          }
+        ]
+      : [
+          {
+            title: "一、工程量清单明细",
+            blocks: [
+              {
+                type: "table" as const,
+                table: {
+                  headers: ["序号", "分类", "项目名称", "规格型号", "单位", "工程量", "单价", "合价", "备注"],
+                  rows: payload.rows.map((item, index) => [
+                    `${index + 1}`,
+                    item.typeLabel,
+                    item.itemName,
+                    item.specification || "-",
+                    item.unit || "-",
+                    `${item.quantity}`,
+                    formatCurrency(item.unitPrice),
+                    formatCurrency(item.lineTotal),
+                    item.remark || "-"
+                  ]),
+                  columnWidths: [6, 10, 20, 18, 8, 10, 12, 12, 14],
+                  fontSize: 8
+                }
+              }
+            ]
+          },
+          {
+            title: "二、费用汇总",
+            blocks: [
+              {
+                type: "key-values" as const,
+                columns: 2,
+                items: [
+                  { label: "工程项小计", value: formatCurrency(payload.budgetSummary.engineeringSubtotal) },
+                  { label: "其他费用小计", value: formatCurrency(payload.budgetSummary.otherFeeSubtotal) },
+                  { label: "测算总价", value: formatCurrency(payload.budgetSummary.calculatedBudget) },
+                  { label: "申报预算", value: formatCurrency(payload.budgetSummary.declaredBudget) },
+                  { label: "预算差额", value: formatCurrency(payload.budgetSummary.budgetGap) }
+                ]
+              },
+              { type: "paragraph" as const, text: payload.declaredBudgetNote }
+            ]
+          }
+        ];
+
   return {
     title: "工程量清单",
     subtitle: "执行与招采参考版本",
@@ -1217,49 +1375,7 @@ export function buildBillOfQuantitiesPdfDocument(payload: BillOfQuantitiesPayloa
       { label: "预算差额", value: formatCurrency(payload.budgetSummary.budgetGap) },
       { label: "说明", value: payload.declaredBudgetNote }
     ],
-    sections: [
-      {
-        title: "一、工程量清单明细",
-        blocks: [
-          {
-            type: "table",
-            table: {
-              headers: ["序号", "分类", "项目名称", "规格型号", "单位", "工程量", "单价", "合价", "备注"],
-              rows: payload.rows.map((item, index) => [
-                `${index + 1}`,
-                item.typeLabel,
-                item.itemName,
-                item.specification || "-",
-                item.unit || "-",
-                `${item.quantity}`,
-                formatCurrency(item.unitPrice),
-                formatCurrency(item.lineTotal),
-                item.remark || "-"
-              ]),
-              columnWidths: [6, 10, 20, 18, 8, 10, 12, 12, 14],
-              fontSize: 8
-            }
-          }
-        ]
-      },
-      {
-        title: "二、费用汇总",
-        blocks: [
-          {
-            type: "key-values",
-            columns: 2,
-            items: [
-              { label: "工程项小计", value: formatCurrency(payload.budgetSummary.engineeringSubtotal) },
-              { label: "其他费用小计", value: formatCurrency(payload.budgetSummary.otherFeeSubtotal) },
-              { label: "测算总价", value: formatCurrency(payload.budgetSummary.calculatedBudget) },
-              { label: "申报预算", value: formatCurrency(payload.budgetSummary.declaredBudget) },
-              { label: "预算差额", value: formatCurrency(payload.budgetSummary.budgetGap) }
-            ]
-          },
-          { type: "paragraph", text: payload.declaredBudgetNote }
-        ]
-      }
-    ]
+    sections: uploadSections
   };
 }
 

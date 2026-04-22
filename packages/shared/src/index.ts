@@ -34,7 +34,12 @@ export type IssueSourceType =
 
 export type UrgencyLevel = "low" | "medium" | "high" | "critical";
 
-export type AttachmentSlotKey = "issue_photos" | "fault_registry" | "drawings" | "supplementary";
+export type AttachmentSlotKey =
+  | "issue_photos"
+  | "fault_registry"
+  | "drawings"
+  | "supplementary"
+  | "cost_sheet";
 
 export type ReviewSeverity = "high" | "medium" | "low";
 export type ReviewModule = "compliance" | "cost" | "technical" | "general";
@@ -119,13 +124,71 @@ export interface CostMatrixRow {
   remark: string;
 }
 
+export type CostInputMode = "online" | "upload";
+export type CostSheetRowType = "detail" | "summary" | "tax" | "note";
+
+export interface CostSheetParsedRow {
+  id: string;
+  sheetName: string;
+  rowNumber: number;
+  sectionName?: string;
+  rowType: CostSheetRowType;
+  itemName: string;
+  specification?: string;
+  unit?: string;
+  quantity?: number;
+  materialCost?: number;
+  laborCost?: number;
+  otherCost?: number;
+  unitPrice?: number;
+  lineTotal?: number;
+  remark?: string;
+  sourceCells?: Record<string, string>;
+}
+
+export interface CostSheetSection {
+  id: string;
+  sheetName: string;
+  name: string;
+  startRow: number;
+  endRow?: number;
+  subtotal?: number;
+  tax?: number;
+  total?: number;
+}
+
+export interface UploadedCostSheetSnapshot {
+  attachmentId: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  parsedAt: string;
+  status: "completed" | "failed";
+  workbookSheetCount: number;
+  parsedSheetNames: string[];
+  totalAmount?: number;
+  totalLabel?: string;
+  totalCell?: string;
+  totalSheetName?: string;
+  preTaxSubtotal?: number;
+  taxAndFeeTotal?: number;
+  detailRowCount: number;
+  sections: CostSheetSection[];
+  rows: CostSheetParsedRow[];
+  notes: string[];
+  warnings: string[];
+}
+
 export interface BudgetSummary {
+  costSource?: CostInputMode;
   engineeringSubtotal: number;
   otherFeeSubtotal: number;
   calculatedBudget: number;
   declaredBudget: number;
   budgetGap: number;
   topCostItems: Array<{ itemName: string; specification: string; lineTotal: number }>;
+  uploadedCostSheetTotal?: number;
+  uploadedCostSheetFileName?: string;
 }
 
 export interface Attachment {
@@ -195,6 +258,8 @@ export interface FormSnapshot {
   initialBudgetExplanation: string;
   expectedBenefits: string;
   supplementaryNotes: string;
+  costInputMode?: CostInputMode;
+  uploadedCostSheet?: UploadedCostSheetSnapshot;
   costMatrixRows: CostMatrixRow[];
   riskFlags?: RiskFlags;
   categorySpecificFields?: CategorySpecificFields;
@@ -518,7 +583,8 @@ export const ATTACHMENT_SLOT_LABELS: Record<AttachmentSlotKey, string> = {
   issue_photos: "问题照片",
   fault_registry: "故障点位台账",
   drawings: "图纸",
-  supplementary: "补充材料"
+  supplementary: "补充材料",
+  cost_sheet: "工程量清单"
 };
 
 export const TECHNICAL_FIELD_LABELS: Record<keyof TechnicalSchemeTemplate, string> = {
@@ -711,6 +777,7 @@ export function createEmptyFormSnapshot(): FormSnapshot {
     initialBudgetExplanation: "",
     expectedBenefits: "",
     supplementaryNotes: "",
+    costInputMode: "online",
     costMatrixRows: [],
     riskFlags: createEmptyRiskFlags(),
     categorySpecificFields: {}
@@ -724,7 +791,55 @@ export function calculateCostLineTotal(row: Pick<CostMatrixRow, "quantity" | "un
 export function calculateBudgetSummary(params: {
   costMatrixRows: CostMatrixRow[];
   declaredBudget: number;
+  costInputMode?: CostInputMode;
+  uploadedCostSheet?: UploadedCostSheetSnapshot;
 }): BudgetSummary {
+  const costSource = params.costInputMode ?? "online";
+  const uploadedSheet = params.uploadedCostSheet;
+  if (
+    costSource === "upload" &&
+    uploadedSheet?.status === "completed" &&
+    typeof uploadedSheet.totalAmount === "number" &&
+    Number.isFinite(uploadedSheet.totalAmount)
+  ) {
+    const calculatedBudget = roundMoney(uploadedSheet.totalAmount);
+    const preTaxSubtotal = roundMoney(
+      typeof uploadedSheet.preTaxSubtotal === "number"
+        ? uploadedSheet.preTaxSubtotal
+        : uploadedSheet.rows
+            .filter((item) => item.rowType === "detail")
+            .reduce((sum, item) => sum + Number(item.lineTotal ?? 0), 0)
+    );
+    const otherFeeSubtotal = roundMoney(
+      typeof uploadedSheet.taxAndFeeTotal === "number"
+        ? uploadedSheet.taxAndFeeTotal
+        : Math.max(calculatedBudget - preTaxSubtotal, 0)
+    );
+    const declaredBudget = roundMoney(Number(params.declaredBudget ?? 0));
+    const budgetGap = roundMoney(declaredBudget - calculatedBudget);
+    const topCostItems = uploadedSheet.rows
+      .filter((item) => item.rowType === "detail" && typeof item.lineTotal === "number")
+      .map((item) => ({
+        itemName: item.itemName,
+        specification: item.specification ?? "",
+        lineTotal: roundMoney(Number(item.lineTotal ?? 0))
+      }))
+      .sort((left, right) => right.lineTotal - left.lineTotal)
+      .slice(0, 3);
+
+    return {
+      costSource,
+      engineeringSubtotal: preTaxSubtotal,
+      otherFeeSubtotal,
+      calculatedBudget,
+      declaredBudget,
+      budgetGap,
+      topCostItems,
+      uploadedCostSheetTotal: calculatedBudget,
+      uploadedCostSheetFileName: uploadedSheet.fileName
+    };
+  }
+
   const engineeringSubtotal = roundMoney(
     params.costMatrixRows
       .filter((item) => item.type === "engineering")
@@ -748,6 +863,7 @@ export function calculateBudgetSummary(params: {
     .slice(0, 3);
 
   return {
+    costSource: "online",
     engineeringSubtotal,
     otherFeeSubtotal,
     calculatedBudget,

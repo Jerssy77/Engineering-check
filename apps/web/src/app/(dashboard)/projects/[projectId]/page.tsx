@@ -35,6 +35,7 @@ import {
   InputNumber,
   List,
   Progress,
+  Radio,
   Row,
   Space,
   Tag,
@@ -195,7 +196,9 @@ const CATEGORY_SPECIFIC_FIELDS: Record<ProjectCategory, Array<[string, string, s
 function buildBudgetSummary(values?: Partial<FormSnapshot>): BudgetSummary {
   return calculateBudgetSummary({
     costMatrixRows: values?.costMatrixRows ?? [],
-    declaredBudget: values?.budgetAmount ?? 0
+    declaredBudget: values?.budgetAmount ?? 0,
+    costInputMode: values?.costInputMode,
+    uploadedCostSheet: values?.uploadedCostSheet
   });
 }
 
@@ -227,6 +230,8 @@ function mergeFormSnapshot(
       ...previous.categorySpecificFields,
       ...next.categorySpecificFields
     },
+    costInputMode: next.costInputMode ?? previous.costInputMode ?? "online",
+    uploadedCostSheet: next.uploadedCostSheet ?? previous.uploadedCostSheet,
     costMatrixRows: next.costMatrixRows ?? previous.costMatrixRows
   };
 }
@@ -234,6 +239,7 @@ function mergeFormSnapshot(
 function getFileAccept(slotKey: string): string | undefined {
   if (slotKey === "issue_photos") return "image/*";
   if (slotKey === "fault_registry") return ".xls,.xlsx,.csv";
+  if (slotKey === "cost_sheet") return ".xls,.xlsx,.csv";
   if (slotKey === "drawings") return ".pdf,image/*";
   return undefined;
 }
@@ -530,7 +536,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
     setUploadingKey(slotKey);
     try {
       await apiRequest("/files/upload", { method: "POST", body: formData }, session);
-      messageApi.success("材料上传成功");
+      messageApi.success(slotKey === "cost_sheet" ? "工程量清单已上传并开始解析" : "材料上传成功");
       await load();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "材料上传失败");
@@ -630,6 +636,19 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
       </div>
     )
   }));
+  const costInputMode = liveSnapshot.costInputMode ?? currentVersion?.snapshot.costInputMode ?? "online";
+  const uploadedCostSheet = liveSnapshot.uploadedCostSheet ?? currentVersion?.snapshot.uploadedCostSheet;
+
+  const handleCostInputModeChange = (mode: "online" | "upload") => {
+    const patch: Partial<FormSnapshot> = { costInputMode: mode };
+    if (mode === "upload" && uploadedCostSheet?.status === "completed" && typeof uploadedCostSheet.totalAmount === "number") {
+      patch.budgetAmount = uploadedCostSheet.totalAmount;
+      form.setFieldValue("budgetAmount", uploadedCostSheet.totalAmount);
+    }
+    form.setFieldValue("costInputMode", mode);
+    setLiveSnapshot((previous) => mergeFormSnapshot(previous, patch));
+    window.setTimeout(() => void persistDraft({ background: true }), 0);
+  };
 
   const stepContent = () => {
     switch (currentStep) {
@@ -652,7 +671,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                 }}
                 disabled={!canEdit}
               >
-                同步矩阵测算总价到申报预算
+                同步{costInputMode === "upload" ? "上传清单总价" : "矩阵测算总价"}到申报预算
               </Button>
             </SectionBlock>
 
@@ -793,7 +812,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
       case 3:
         return (
           <Space direction="vertical" size={18} style={{ width: "100%" }}>
-            <SectionBlock title="预算说明" body="先说明预算依据与预期收益，再把工程项与其他费用按清单方式录入。">
+            <SectionBlock title="预算说明" body="先说明预算依据与预期收益，再选择在线填报或上传 Excel 清单。">
               {BUSINESS_TEXT_FIELDS.map(([name, label, required]) => (
                 <Form.Item
                   key={name}
@@ -806,104 +825,256 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
               ))}
             </SectionBlock>
 
-            <SectionBlock title="工程量与预算矩阵" body="重点强调工程量、单价和合价，备注仅在需要时填写。">
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1.8fr 1.5fr .8fr .8fr 1fr 1fr 1.4fr 56px",
-                  gap: 8,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  color: "var(--ink-soft)"
-                }}
-              >
-                <div>分类</div>
-                <div>项目名称</div>
-                <div>规格型号</div>
-                <div>单位</div>
-                <div>工程量</div>
-                <div>单价</div>
-                <div>合价</div>
-                <div>备注</div>
-                <div />
-              </div>
-              <Form.List name="costMatrixRows">
-                {(
-                  fields: Array<{ key: React.Key; name: number }>,
-                  { add, remove }: { add: (defaultValue?: CostMatrixRow) => void; remove: (index: number | number[]) => void }
-                ) => (
-                  <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                    {fields.map((field: { key: React.Key; name: number }) => {
-                      const currentRow = (form.getFieldValue(["costMatrixRows", field.name]) ?? {}) as Partial<CostMatrixRow>;
-                      return (
-                        <div
-                          key={field.key}
-                          className="summary-item"
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1.2fr 1.8fr 1.5fr .8fr .8fr 1fr 1fr 1.4fr 56px",
-                            gap: 8,
-                            alignItems: "start"
-                          }}
-                        >
-                          <Form.Item name={[field.name, "type"]} rules={[{ required: true, message: "请选择分类" }]} style={{ marginBottom: 0 }}>
-                            <Select disabled={!canEdit} options={costRowTypeOptions} />
-                          </Form.Item>
-                          <Form.Item name={[field.name, "itemName"]} rules={[{ required: true, message: "请填写项目名称" }]} style={{ marginBottom: 0 }}>
-                            <Input disabled={!canEdit} />
-                          </Form.Item>
-                          <Form.Item name={[field.name, "specification"]} style={{ marginBottom: 0 }}>
-                            <Input disabled={!canEdit} />
-                          </Form.Item>
-                          <Form.Item name={[field.name, "unit"]} style={{ marginBottom: 0 }}>
-                            <Input disabled={!canEdit} />
-                          </Form.Item>
-                          <Form.Item name={[field.name, "quantity"]} rules={[{ required: true, message: "请填写工程量" }]} style={{ marginBottom: 0 }}>
-                            <InputNumber min={0.01} style={{ width: "100%" }} disabled={!canEdit} />
-                          </Form.Item>
-                          <Form.Item name={[field.name, "unitPrice"]} rules={[{ required: true, message: "请填写单价" }]} style={{ marginBottom: 0 }}>
-                            <InputNumber min={0.01} style={{ width: "100%" }} disabled={!canEdit} />
-                          </Form.Item>
-                          <Input
-                            value={formatCurrency(
-                              calculateCostLineTotal({
-                                quantity: Number(currentRow.quantity ?? 0),
-                                unitPrice: Number(currentRow.unitPrice ?? 0)
-                              })
-                            )}
-                            disabled
-                          />
-                          <Form.Item name={[field.name, "remark"]} style={{ marginBottom: 0 }}>
-                            <Input disabled={!canEdit} />
-                          </Form.Item>
-                          {canEdit ? <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} /> : <div />}
+            <SectionBlock
+              title="工程量与预算"
+              body="简单项目可在线填报；复杂预算清单建议上传 Excel，系统会解析总价、分组、明细和异常提示。"
+              extra={
+                <Form.Item name="costInputMode" style={{ marginBottom: 0 }}>
+                  <Radio.Group
+                    disabled={!canEdit}
+                    optionType="button"
+                    buttonStyle="solid"
+                    value={costInputMode}
+                    onChange={(event) => handleCostInputModeChange(event.target.value as "online" | "upload")}
+                    options={[
+                      { label: "在线填报", value: "online" },
+                      { label: "上传 Excel 清单", value: "upload" }
+                    ]}
+                  />
+                </Form.Item>
+              }
+            >
+              {costInputMode === "upload" ? (
+                <Space direction="vertical" size={14} style={{ width: "100%" }}>
+                  <Alert
+                    type={uploadedCostSheet?.status === "completed" ? "success" : "info"}
+                    showIcon
+                    message={
+                      uploadedCostSheet?.status === "completed"
+                        ? "已按上传清单总计同步申报预算"
+                        : "请上传 .xlsx / .csv 工程量清单，系统识别最终总价后才能提交 AI 预审"
+                    }
+                    description="上传清单不占用其他材料 2MB 合计额度；同一草稿只保留一个当前工程量清单，重新上传会替换旧文件。"
+                  />
+                  {canEdit ? (
+                    <label>
+                      <input
+                        type="file"
+                        accept={getFileAccept("cost_sheet")}
+                        hidden
+                        onChange={(event) => void uploadFiles("cost_sheet", event)}
+                      />
+                      <Button icon={<CloudUploadOutlined />} loading={uploadingKey === "cost_sheet"}>
+                        上传 / 替换工程量清单
+                      </Button>
+                    </label>
+                  ) : null}
+                  {uploadedCostSheet ? (
+                    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                      <div className="report-columns">
+                        <div className="summary-item">
+                          <Typography.Text type="secondary">原始文件</Typography.Text>
+                          <strong>{uploadedCostSheet.fileName}</strong>
+                          <Button
+                            type="link"
+                            icon={<DownloadOutlined />}
+                            style={{ paddingInline: 0 }}
+                            onClick={() => void downloadAttachment(uploadedCostSheet.attachmentId, uploadedCostSheet.fileName)}
+                          >
+                            下载原表
+                          </Button>
                         </div>
-                      );
-                    })}
-                    {canEdit ? (
-                      <Space wrap>
-                        <Button icon={<PlusOutlined />} onClick={() => add(createEmptyCostMatrixRow("engineering"))}>
-                          新增工程项
-                        </Button>
-                        <Button icon={<PlusOutlined />} onClick={() => add(createEmptyCostMatrixRow("other_fee"))}>
-                          新增其他费用
-                        </Button>
+                        <div className="summary-item">
+                          <Typography.Text type="secondary">识别总价</Typography.Text>
+                          <strong>{uploadedCostSheet.totalAmount ? formatCurrency(uploadedCostSheet.totalAmount) : "未识别"}</strong>
+                          <Typography.Text type="secondary">
+                            {uploadedCostSheet.totalSheetName ?? "工作表"} {uploadedCostSheet.totalCell ?? ""}
+                          </Typography.Text>
+                        </div>
+                        <div className="summary-item">
+                          <Typography.Text type="secondary">识别明细</Typography.Text>
+                          <strong>{uploadedCostSheet.detailRowCount} 行</strong>
+                          <Typography.Text type="secondary">{uploadedCostSheet.parsedSheetNames.join("、") || "未识别工作表"}</Typography.Text>
+                        </div>
+                        <div className="summary-item">
+                          <Typography.Text type="secondary">解析状态</Typography.Text>
+                          <strong>{uploadedCostSheet.status === "completed" ? "解析成功" : "解析失败"}</strong>
+                          <Typography.Text type="secondary">{formatDateTime(uploadedCostSheet.parsedAt)}</Typography.Text>
+                        </div>
+                      </div>
+                      <List
+                        size="small"
+                        header={<Typography.Text strong>分组汇总</Typography.Text>}
+                        bordered
+                        dataSource={uploadedCostSheet.sections}
+                        locale={{ emptyText: "暂未识别到分组" }}
+                        renderItem={(section) => (
+                          <List.Item>
+                            <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                              <Typography.Text strong>{section.name}</Typography.Text>
+                              <Typography.Text type="secondary">
+                                {section.sheetName} 第 {section.startRow}-{section.endRow ?? section.startRow} 行
+                              </Typography.Text>
+                              <Typography.Text>
+                                小计 {section.subtotal === undefined ? "-" : formatCurrency(section.subtotal)} / 税费{" "}
+                                {section.tax === undefined ? "-" : formatCurrency(section.tax)} / 总计{" "}
+                                {section.total === undefined ? "-" : formatCurrency(section.total)}
+                              </Typography.Text>
+                            </Space>
+                          </List.Item>
+                        )}
+                      />
+                      {uploadedCostSheet.warnings.length ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message="解析提示"
+                          description={
+                            <ul style={{ margin: 0, paddingLeft: 18 }}>
+                              {uploadedCostSheet.warnings.map((warning) => (
+                                <li key={warning}>{warning}</li>
+                              ))}
+                            </ul>
+                          }
+                        />
+                      ) : null}
+                      <Collapse
+                        items={[
+                          {
+                            key: "parsed-rows",
+                            label: `查看全部解析明细（${uploadedCostSheet.rows.length} 行）`,
+                            children: (
+                              <List
+                                size="small"
+                                dataSource={uploadedCostSheet.rows}
+                                pagination={{ pageSize: 10, size: "small" }}
+                                renderItem={(row) => (
+                                  <List.Item>
+                                    <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                                      <Space wrap>
+                                        <Tag>{row.rowType === "detail" ? "明细" : row.rowType === "tax" ? "税费" : row.rowType === "summary" ? "汇总" : "备注"}</Tag>
+                                        <Typography.Text strong>{row.itemName}</Typography.Text>
+                                        <Typography.Text type="secondary">
+                                          {row.sheetName} 第 {row.rowNumber} 行
+                                        </Typography.Text>
+                                      </Space>
+                                      <Typography.Text type="secondary">
+                                        {row.specification || row.sectionName || "-"} / {row.unit || "-"} / 数量 {row.quantity ?? "-"} / 单价{" "}
+                                        {row.unitPrice === undefined ? "-" : formatCurrency(row.unitPrice)} / 合价{" "}
+                                        {row.lineTotal === undefined ? "-" : formatCurrency(row.lineTotal)}
+                                      </Typography.Text>
+                                    </Space>
+                                  </List.Item>
+                                )}
+                              />
+                            )
+                          }
+                        ]}
+                      />
+                    </Space>
+                  ) : null}
+                </Space>
+              ) : (
+                <Space direction="vertical" size={14} style={{ width: "100%" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.2fr 1.8fr 1.5fr .8fr .8fr 1fr 1fr 1.4fr 56px",
+                      gap: 8,
+                      fontWeight: 700,
+                      fontSize: 13,
+                      color: "var(--ink-soft)"
+                    }}
+                  >
+                    <div>分类</div>
+                    <div>项目名称</div>
+                    <div>规格型号</div>
+                    <div>单位</div>
+                    <div>工程量</div>
+                    <div>单价</div>
+                    <div>合价</div>
+                    <div>备注</div>
+                    <div />
+                  </div>
+                  <Form.List name="costMatrixRows">
+                    {(
+                      fields: Array<{ key: React.Key; name: number }>,
+                      { add, remove }: { add: (defaultValue?: CostMatrixRow) => void; remove: (index: number | number[]) => void }
+                    ) => (
+                      <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                        {fields.map((field: { key: React.Key; name: number }) => {
+                          const currentRow = (form.getFieldValue(["costMatrixRows", field.name]) ?? {}) as Partial<CostMatrixRow>;
+                          return (
+                            <div
+                              key={field.key}
+                              className="summary-item"
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "1.2fr 1.8fr 1.5fr .8fr .8fr 1fr 1fr 1.4fr 56px",
+                                gap: 8,
+                                alignItems: "start"
+                              }}
+                            >
+                              <Form.Item name={[field.name, "type"]} rules={[{ required: true, message: "请选择分类" }]} style={{ marginBottom: 0 }}>
+                                <Select disabled={!canEdit} options={costRowTypeOptions} />
+                              </Form.Item>
+                              <Form.Item name={[field.name, "itemName"]} rules={[{ required: true, message: "请填写项目名称" }]} style={{ marginBottom: 0 }}>
+                                <Input disabled={!canEdit} />
+                              </Form.Item>
+                              <Form.Item name={[field.name, "specification"]} style={{ marginBottom: 0 }}>
+                                <Input disabled={!canEdit} />
+                              </Form.Item>
+                              <Form.Item name={[field.name, "unit"]} style={{ marginBottom: 0 }}>
+                                <Input disabled={!canEdit} />
+                              </Form.Item>
+                              <Form.Item name={[field.name, "quantity"]} rules={[{ required: true, message: "请填写工程量" }]} style={{ marginBottom: 0 }}>
+                                <InputNumber min={0.01} style={{ width: "100%" }} disabled={!canEdit} />
+                              </Form.Item>
+                              <Form.Item name={[field.name, "unitPrice"]} rules={[{ required: true, message: "请填写单价" }]} style={{ marginBottom: 0 }}>
+                                <InputNumber min={0.01} style={{ width: "100%" }} disabled={!canEdit} />
+                              </Form.Item>
+                              <Input
+                                value={formatCurrency(
+                                  calculateCostLineTotal({
+                                    quantity: Number(currentRow.quantity ?? 0),
+                                    unitPrice: Number(currentRow.unitPrice ?? 0)
+                                  })
+                                )}
+                                disabled
+                              />
+                              <Form.Item name={[field.name, "remark"]} style={{ marginBottom: 0 }}>
+                                <Input disabled={!canEdit} />
+                              </Form.Item>
+                              {canEdit ? <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} /> : <div />}
+                            </div>
+                          );
+                        })}
+                        {canEdit ? (
+                          <Space wrap>
+                            <Button icon={<PlusOutlined />} onClick={() => add(createEmptyCostMatrixRow("engineering"))}>
+                              新增工程项
+                            </Button>
+                            <Button icon={<PlusOutlined />} onClick={() => add(createEmptyCostMatrixRow("other_fee"))}>
+                              新增其他费用
+                            </Button>
+                          </Space>
+                        ) : null}
                       </Space>
-                    ) : null}
-                  </Space>
-                )}
-              </Form.List>
+                    )}
+                  </Form.List>
+                </Space>
+              )}
               <div className="report-columns">
                 <div className="summary-item">
-                  <Typography.Text type="secondary">工程项小计</Typography.Text>
+                  <Typography.Text type="secondary">{costInputMode === "upload" ? "清单不含税 / 工程项" : "工程项小计"}</Typography.Text>
                   <strong>{formatCurrency(liveBudgetSummary.engineeringSubtotal)}</strong>
                 </div>
                 <div className="summary-item">
-                  <Typography.Text type="secondary">其他费用小计</Typography.Text>
+                  <Typography.Text type="secondary">{costInputMode === "upload" ? "税费 / 其他费用" : "其他费用小计"}</Typography.Text>
                   <strong>{formatCurrency(liveBudgetSummary.otherFeeSubtotal)}</strong>
                 </div>
                 <div className="summary-item">
-                  <Typography.Text type="secondary">矩阵测算总价</Typography.Text>
+                  <Typography.Text type="secondary">{costInputMode === "upload" ? "上传清单总价" : "矩阵测算总价"}</Typography.Text>
                   <strong>{formatCurrency(liveBudgetSummary.calculatedBudget)}</strong>
                 </div>
                 <div className="summary-item">
@@ -1210,7 +1381,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                   <Typography.Text type="secondary">预算状态</Typography.Text>
                   <strong>{formatCurrency(liveBudgetSummary.declaredBudget)}</strong>
                   <Typography.Text type="secondary">
-                    {`矩阵 ${formatCurrency(liveBudgetSummary.calculatedBudget)} / 差额 ${formatCurrency(liveBudgetSummary.budgetGap)}`}
+                    {`${costInputMode === "upload" ? "上传清单" : "矩阵"} ${formatCurrency(liveBudgetSummary.calculatedBudget)} / 差额 ${formatCurrency(liveBudgetSummary.budgetGap)}`}
                   </Typography.Text>
                 </div>
                 <div className="summary-item">

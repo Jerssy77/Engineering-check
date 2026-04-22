@@ -29,13 +29,15 @@ class UploadFilesBodyDto {
     "issue_photos",
     "fault_registry",
     "drawings",
-    "supplementary"
+    "supplementary",
+    "cost_sheet"
   ])
   slotKey!:
     | "issue_photos"
     | "fault_registry"
     | "drawings"
-    | "supplementary";
+    | "supplementary"
+    | "cost_sheet";
 }
 
 @Controller("files")

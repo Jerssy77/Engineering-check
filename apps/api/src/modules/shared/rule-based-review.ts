@@ -5,6 +5,7 @@ import {
   Attachment,
   AttachmentParseResult,
   CostEstimateRange,
+  CostMatrixRow,
   DuplicateRemodelingMatch,
   FormSnapshot,
   InternalControlRequirement,
@@ -280,6 +281,27 @@ function buildCostEstimateRanges(
     }));
 }
 
+function buildUploadedCostRows(snapshot: FormSnapshot): CostMatrixRow[] {
+  if (snapshot.costInputMode !== "upload" || snapshot.uploadedCostSheet?.status !== "completed") return [];
+  return snapshot.uploadedCostSheet.rows
+    .filter((row) => row.rowType === "detail" && typeof row.lineTotal === "number")
+    .map((row) => ({
+      id: row.id,
+      type: "engineering",
+      itemName: row.itemName,
+      specification: row.specification ?? row.sectionName ?? "",
+      unit: row.unit ?? "项",
+      quantity: row.quantity && row.quantity > 0 ? row.quantity : 1,
+      unitPrice:
+        row.unitPrice && row.unitPrice > 0
+          ? row.unitPrice
+          : row.lineTotal && row.lineTotal > 0
+            ? row.lineTotal
+            : 0,
+      remark: row.remark ?? `来自上传清单：${row.sheetName} 第 ${row.rowNumber} 行`
+    }));
+}
+
 export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIReviewResult, "id"> {
   const {
     snapshot,
@@ -295,8 +317,11 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
   const missingMaterials = attachmentSlots.filter((slot) => slot.status === "missing").map((slot) => slot.label);
   const budgetSummary = calculateBudgetSummary({
     costMatrixRows: snapshot.costMatrixRows,
-    declaredBudget: snapshot.budgetAmount
+    declaredBudget: snapshot.budgetAmount,
+    costInputMode: snapshot.costInputMode,
+    uploadedCostSheet: snapshot.uploadedCostSheet
   });
+  const costRowsForHeuristics = snapshot.costInputMode === "upload" ? buildUploadedCostRows(snapshot) : snapshot.costMatrixRows;
   const scenarioCards = selectEngineeringScenarioCards({
     snapshot,
     parseResults,
@@ -362,7 +387,7 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
     });
   });
 
-  if (!snapshot.costMatrixRows.length) {
+  if (snapshot.costInputMode !== "upload" && !snapshot.costMatrixRows.length) {
     pushFinding(costFindings, {
       severity: "high",
       title: "未提供费用测算矩阵",
@@ -387,10 +412,10 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
   if (budgetSummary.budgetGap !== 0) {
     pushFinding(costFindings, {
       severity: "high",
-      title: "申报总预算与矩阵汇总不一致",
-      basis: "总预算应与成本矩阵汇总口径保持一致。",
-      currentState: `申报 ${budgetSummary.declaredBudget} 元，矩阵汇总 ${budgetSummary.calculatedBudget} 元。`,
-      action: "复核数量、单价和其他费用行，确保总预算与矩阵合价完全一致。",
+      title: "申报总预算与清单汇总不一致",
+      basis: "总预算应与当前启用的工程量清单口径保持一致。",
+      currentState: `申报 ${budgetSummary.declaredBudget} 元，清单汇总 ${budgetSummary.calculatedBudget} 元。`,
+      action: "复核数量、单价、税费和其他费用行，确保申报预算与清单合价完全一致。",
       requiredMaterials: ["故障点位台账"]
     });
     internalControlRequirements.push(
@@ -406,7 +431,7 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
     );
   }
 
-  const abnormalRows = snapshot.costMatrixRows.filter((item) => {
+  const abnormalRows = costRowsForHeuristics.filter((item) => {
     const lineTotal = calculateCostLineTotal(item);
     return item.unitPrice >= 100000 || lineTotal >= Math.max(budgetSummary.calculatedBudget * 0.6, 1);
   });
@@ -523,7 +548,7 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
   ]);
   const advisoryWritebackCandidates = scenarioCards.flatMap((card) => cardToWritebackCandidates(card));
   const costEstimateRanges = buildCostEstimateRanges(
-    snapshot.costMatrixRows,
+    costRowsForHeuristics,
     budgetSummary.calculatedBudget,
     scenarioCards.map((card) => card.id)
   );
@@ -608,7 +633,7 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
       "费用构成基本完整，矩阵口径与总预算基本匹配。",
       "仍需复核费用口径、异常单价及成本优化空间。",
       {
-        mustKeepItems: snapshot.costMatrixRows.length
+        mustKeepItems: costRowsForHeuristics.length
           ? ["与当前问题直接相关的核心修复工程量", "涉及安全恢复、联调联试和基本验收的必要投入"]
           : [],
         optimizationCandidates: [

@@ -138,6 +138,10 @@ export class UpdateVersionDto {
   costMatrixRows?: Array<Record<string, unknown>>;
 
   @IsOptional()
+  @IsIn(["online", "upload"])
+  costInputMode?: "online" | "upload";
+
+  @IsOptional()
   @IsObject()
   riskFlags?: Record<string, boolean>;
 

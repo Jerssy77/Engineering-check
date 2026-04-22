@@ -6,6 +6,8 @@ import {
   NotFoundException,
   OnModuleInit
 } from "@nestjs/common";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import {
   AIReviewResult,
   Attachment,
@@ -37,6 +39,7 @@ import { AiReviewService } from "../shared/ai-review.service";
 import { DemoDataService } from "../shared/demo-data.service";
 import { PdfService } from "../shared/pdf.service";
 import { normalizeAiReview } from "../shared/review-normalization";
+import { resolveUploadDirPath } from "../shared/storage-paths";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { HumanDecisionDto } from "./dto/human-decision.dto";
 import {
@@ -84,13 +87,22 @@ function normalizeCostMatrixRows(items: Array<Record<string, unknown>>): FormSna
 }
 
 function mergeSnapshot(snapshot: FormSnapshot, dto: UpdateVersionDto): FormSnapshot {
+  const costInputMode = dto.costInputMode ?? snapshot.costInputMode ?? "online";
+  const uploadedCostSheet = snapshot.uploadedCostSheet;
+  const syncedUploadBudget =
+    costInputMode === "upload" &&
+    uploadedCostSheet?.status === "completed" &&
+    typeof uploadedCostSheet.totalAmount === "number"
+      ? uploadedCostSheet.totalAmount
+      : undefined;
+
   return {
     ...snapshot,
     ...dto,
     projectName: dto.projectName ?? snapshot.projectName,
     projectCategory: dto.projectCategory ?? snapshot.projectCategory,
     priority: dto.priority ?? snapshot.priority,
-    budgetAmount: dto.budgetAmount ?? snapshot.budgetAmount,
+    budgetAmount: syncedUploadBudget ?? dto.budgetAmount ?? snapshot.budgetAmount,
     expectedStartDate: dto.expectedStartDate ?? snapshot.expectedStartDate,
     expectedEndDate: dto.expectedEndDate ?? snapshot.expectedEndDate,
     issueSourceType: dto.issueSourceType ?? snapshot.issueSourceType,
@@ -108,8 +120,19 @@ function mergeSnapshot(snapshot: FormSnapshot, dto: UpdateVersionDto): FormSnaps
       ...(snapshot.categorySpecificFields ?? {}),
       ...(dto.categorySpecificFields ?? {})
     },
+    costInputMode,
+    uploadedCostSheet,
     costMatrixRows: dto.costMatrixRows ? normalizeCostMatrixRows(dto.costMatrixRows) : snapshot.costMatrixRows
   };
+}
+
+function calculateSnapshotBudgetSummary(snapshot: FormSnapshot) {
+  return calculateBudgetSummary({
+    costMatrixRows: snapshot.costMatrixRows,
+    declaredBudget: snapshot.budgetAmount,
+    costInputMode: snapshot.costInputMode,
+    uploadedCostSheet: snapshot.uploadedCostSheet
+  });
 }
 
 interface PendingAiReviewJob {
@@ -176,10 +199,7 @@ export class ProjectsService implements OnModuleInit {
       auditLogs: this.data
         .listAuditLogs(projectId)
         .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
-      currentBudgetSummary: calculateBudgetSummary({
-        costMatrixRows: currentVersion.snapshot.costMatrixRows,
-        declaredBudget: currentVersion.snapshot.budgetAmount
-      }),
+      currentBudgetSummary: calculateSnapshotBudgetSummary(currentVersion.snapshot),
       currentAttachmentSlots: buildVersionAttachmentSlots({
         category: currentVersion.snapshot.projectCategory,
         sourceType: currentVersion.snapshot.issueSourceType,
@@ -428,10 +448,7 @@ export class ProjectsService implements OnModuleInit {
         sourceType: version.snapshot.issueSourceType,
         attachments
       }),
-      budgetSummary: calculateBudgetSummary({
-        costMatrixRows: version.snapshot.costMatrixRows,
-        declaredBudget: version.snapshot.budgetAmount
-      }),
+      budgetSummary: calculateSnapshotBudgetSummary(version.snapshot),
       organization: this.data.getOrganizations().find((item) => item.id === aggregate.project.organizationId)
     };
   }
@@ -489,6 +506,15 @@ export class ProjectsService implements OnModuleInit {
 
   async downloadBillOfQuantitiesExcel(projectId: string, versionId: string, user: SessionUser) {
     const report = this.getBillOfQuantities(projectId, versionId, user);
+    if (report.sourceMode === "upload" && report.originalAttachment) {
+      const attachment = this.data.getAttachment(report.originalAttachment.id);
+      const absolutePath = path.join(resolveUploadDirPath(), attachment.storageKey);
+      if (!existsSync(absolutePath)) {
+        throw new NotFoundException("原始工程量清单文件不存在");
+      }
+      return readFileSync(absolutePath);
+    }
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "工程立项审批平台";
     workbook.created = new Date();
@@ -618,10 +644,7 @@ export class ProjectsService implements OnModuleInit {
         sourceType: version.snapshot.issueSourceType,
         attachments
       }),
-      budgetSummary: calculateBudgetSummary({
-        costMatrixRows: version.snapshot.costMatrixRows,
-        declaredBudget: version.snapshot.budgetAmount
-      }),
+      budgetSummary: calculateSnapshotBudgetSummary(version.snapshot),
       organization,
       reviewer
     };
@@ -958,22 +981,30 @@ export class ProjectsService implements OnModuleInit {
       issues.push(`以下固定材料缺失：${missingSlotLabels.join("、")}`);
     }
 
-    if (!snapshot.costMatrixRows.length) {
-      issues.push("请至少填写 1 行费用测算矩阵");
+    const costInputMode = snapshot.costInputMode ?? "online";
+    if (costInputMode === "upload") {
+      if (
+        snapshot.uploadedCostSheet?.status !== "completed" ||
+        typeof snapshot.uploadedCostSheet.totalAmount !== "number" ||
+        snapshot.uploadedCostSheet.totalAmount <= 0
+      ) {
+        issues.push("请上传并成功解析工程量清单 Excel，系统需要识别最终总价后才能提交 AI 预审");
+      }
+    } else {
+      if (!snapshot.costMatrixRows.length) {
+        issues.push("请至少填写 1 行费用测算矩阵");
+      }
+
+      if (
+        snapshot.costMatrixRows.some(
+          (item) => !item.itemName.trim() || item.quantity <= 0 || item.unitPrice <= 0
+        )
+      ) {
+        issues.push("费用测算矩阵必须填写完整，数量和单价需为正数");
+      }
     }
 
-    if (
-      snapshot.costMatrixRows.some(
-        (item) => !item.itemName.trim() || item.quantity <= 0 || item.unitPrice <= 0
-      )
-    ) {
-      issues.push("费用测算矩阵必须填写完整，数量和单价需为正数");
-    }
-
-    const budgetSummary = calculateBudgetSummary({
-      costMatrixRows: snapshot.costMatrixRows,
-      declaredBudget: snapshot.budgetAmount
-    });
+    const budgetSummary = calculateSnapshotBudgetSummary(snapshot);
     if (budgetSummary.budgetGap !== 0) {
       issues.push(`申报总预算需与自动总价一致，当前差额 ${budgetSummary.budgetGap} 元`);
     }

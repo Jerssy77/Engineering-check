@@ -5,7 +5,7 @@ import {
   FileTextOutlined,
   TableOutlined
 } from "@ant-design/icons";
-import { Button, Space, Table, Typography, message } from "antd";
+import { Alert, Button, List, Space, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,6 +29,7 @@ interface BoqRow {
 }
 
 interface BoqResponse {
+  sourceMode: "online" | "upload";
   project: {
     id: string;
     title: string;
@@ -49,6 +50,49 @@ interface BoqResponse {
     budgetGap: number;
   };
   declaredBudgetNote: string;
+  uploadedSheetSummary?: {
+    attachmentId: string;
+    fileName: string;
+    parsedAt: string;
+    totalAmount?: number;
+    totalLabel?: string;
+    totalCell?: string;
+    totalSheetName?: string;
+    detailRowCount: number;
+    parsedSheetNames: string[];
+    sections: Array<{
+      id: string;
+      sheetName: string;
+      name: string;
+      startRow: number;
+      endRow?: number;
+      subtotal?: number;
+      tax?: number;
+      total?: number;
+    }>;
+    rows: Array<{
+      id: string;
+      sheetName: string;
+      rowNumber: number;
+      sectionName?: string;
+      rowType: "detail" | "summary" | "tax" | "note";
+      itemName: string;
+      specification?: string;
+      unit?: string;
+      quantity?: number;
+      unitPrice?: number;
+      lineTotal?: number;
+      remark?: string;
+    }>;
+    notes: string[];
+    warnings: string[];
+  };
+  originalAttachment?: {
+    id: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+  };
 }
 
 export default function BillOfQuantitiesPage({
@@ -161,7 +205,9 @@ export default function BillOfQuantitiesPage({
               {report?.project.title ?? "工程量清单"}
             </Typography.Title>
             <Typography.Paragraph style={{ color: "var(--ink-soft)", marginBottom: 0, maxWidth: 760 }}>
-              以工程项与其他费用两类清晰展开当前版本的预算矩阵，支持直接预览、导出 PDF 和导出 Excel，方便后续执行与采买衔接。
+              {report?.sourceMode === "upload"
+                ? "当前版本采用上传 Excel 清单作为正式工程量清单，页面展示解析摘要、分组汇总和关键明细，Excel 下载将返回用户原始文件。"
+                : "以工程项与其他费用两类清晰展开当前版本的预算矩阵，支持直接预览、导出 PDF 和导出 Excel，方便后续执行与采买衔接。"}
             </Typography.Paragraph>
           </Space>
 
@@ -189,16 +235,92 @@ export default function BillOfQuantitiesPage({
           <section className="section-surface document-table">
             <Space direction="vertical" size={14} style={{ width: "100%" }}>
               <Typography.Title level={4} className="section-title">
-                工程量清单预览
+                {report?.sourceMode === "upload" ? "上传清单解析预览" : "工程量清单预览"}
               </Typography.Title>
-              <Table<BoqRow>
-                rowKey="id"
-                loading={loading}
-                columns={columns}
-                dataSource={report?.rows ?? []}
-                pagination={false}
-                scroll={{ x: 1100 }}
-              />
+              {report?.sourceMode === "upload" && report.uploadedSheetSummary ? (
+                <Space direction="vertical" size={14} style={{ width: "100%" }}>
+                  <div className="report-columns">
+                    <div className="summary-item">
+                      <Typography.Text type="secondary">原始文件</Typography.Text>
+                      <strong>{report.uploadedSheetSummary.fileName}</strong>
+                      <Typography.Text type="secondary">{report.uploadedSheetSummary.parsedSheetNames.join("、")}</Typography.Text>
+                    </div>
+                    <div className="summary-item">
+                      <Typography.Text type="secondary">识别总价</Typography.Text>
+                      <strong>{formatCurrency(report.uploadedSheetSummary.totalAmount ?? 0)}</strong>
+                      <Typography.Text type="secondary">
+                        {report.uploadedSheetSummary.totalSheetName ?? "-"} {report.uploadedSheetSummary.totalCell ?? ""}
+                      </Typography.Text>
+                    </div>
+                    <div className="summary-item">
+                      <Typography.Text type="secondary">明细行数</Typography.Text>
+                      <strong>{report.uploadedSheetSummary.detailRowCount} 行</strong>
+                    </div>
+                  </div>
+                  {report.uploadedSheetSummary.warnings.length ? (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="解析提示"
+                      description={report.uploadedSheetSummary.warnings.join("；")}
+                    />
+                  ) : null}
+                  <List
+                    bordered
+                    header={<Typography.Text strong>分组汇总</Typography.Text>}
+                    dataSource={report.uploadedSheetSummary.sections}
+                    locale={{ emptyText: "暂未识别到分组" }}
+                    renderItem={(section) => (
+                      <List.Item>
+                        <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                          <Typography.Text strong>{section.name}</Typography.Text>
+                          <Typography.Text type="secondary">
+                            {section.sheetName} 第 {section.startRow}-{section.endRow ?? section.startRow} 行
+                          </Typography.Text>
+                          <Typography.Text>
+                            小计 {section.subtotal === undefined ? "-" : formatCurrency(section.subtotal)} / 税费{" "}
+                            {section.tax === undefined ? "-" : formatCurrency(section.tax)} / 总计{" "}
+                            {section.total === undefined ? "-" : formatCurrency(section.total)}
+                          </Typography.Text>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                  <List
+                    bordered
+                    header={<Typography.Text strong>解析明细</Typography.Text>}
+                    dataSource={report.uploadedSheetSummary.rows}
+                    pagination={{ pageSize: 12, size: "small" }}
+                    renderItem={(row) => (
+                      <List.Item>
+                        <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                          <Space wrap>
+                            <Tag>{row.rowType === "detail" ? "明细" : row.rowType === "summary" ? "汇总" : row.rowType === "tax" ? "税费" : "备注"}</Tag>
+                            <Typography.Text strong>{row.itemName}</Typography.Text>
+                            <Typography.Text type="secondary">
+                              {row.sheetName} 第 {row.rowNumber} 行
+                            </Typography.Text>
+                          </Space>
+                          <Typography.Text type="secondary">
+                            {row.specification || row.sectionName || "-"} / {row.unit || "-"} / 数量 {row.quantity ?? "-"} / 单价{" "}
+                            {row.unitPrice === undefined ? "-" : formatCurrency(row.unitPrice)} / 合价{" "}
+                            {row.lineTotal === undefined ? "-" : formatCurrency(row.lineTotal)}
+                          </Typography.Text>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                </Space>
+              ) : (
+                <Table<BoqRow>
+                  rowKey="id"
+                  loading={loading}
+                  columns={columns}
+                  dataSource={report?.rows ?? []}
+                  pagination={false}
+                  scroll={{ x: 1100 }}
+                />
+              )}
             </Space>
           </section>
         </Space>
@@ -226,12 +348,14 @@ export default function BillOfQuantitiesPage({
                 onClick={() =>
                   void downloadAsset(
                     `/projects/${routeParams.projectId}/versions/${routeParams.versionId}/bill-of-quantities.xlsx`,
-                    `bill-of-quantities-${routeParams.versionId}.xlsx`
+                    report?.sourceMode === "upload" && report.originalAttachment
+                      ? report.originalAttachment.fileName
+                      : `bill-of-quantities-${routeParams.versionId}.xlsx`
                   )
                 }
                 block
               >
-                下载 Excel
+                {report?.sourceMode === "upload" ? "下载原始 Excel" : "下载 Excel"}
               </Button>
               <Button icon={<FileTextOutlined />} block>
                 <Link href={`/projects/${routeParams.projectId}/feasibility/${routeParams.versionId}`}>
@@ -256,7 +380,7 @@ export default function BillOfQuantitiesPage({
                   <strong>{report ? formatCurrency(report.budgetSummary.otherFeeSubtotal) : "-"}</strong>
                 </div>
                 <div className="summary-item">
-                  <Typography.Text type="secondary">矩阵测算总价</Typography.Text>
+                  <Typography.Text type="secondary">{report?.sourceMode === "upload" ? "上传清单总价" : "矩阵测算总价"}</Typography.Text>
                   <strong>{report ? formatCurrency(report.budgetSummary.calculatedBudget) : "-"}</strong>
                 </div>
                 <div className="summary-item">

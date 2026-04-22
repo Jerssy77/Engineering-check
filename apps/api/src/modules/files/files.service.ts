@@ -4,6 +4,7 @@ import path from "node:path";
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import {
+  Attachment,
   AttachmentKind,
   AttachmentSlotKey,
   FAULT_REGISTRY_TEMPLATE_HEADERS,
@@ -12,6 +13,7 @@ import {
 } from "@property-review/shared";
 
 import { DemoDataService } from "../shared/demo-data.service";
+import { parseCostSheet } from "../shared/cost-sheet-parser";
 import {
   ensureDirectory,
   normalizeLatin1Utf8Text,
@@ -21,6 +23,7 @@ import {
 
 const DEFAULT_ATTACHMENT_MAX_SIZE_BYTES = 512 * 1024;
 const DEFAULT_NON_PHOTO_ATTACHMENTS_MAX_TOTAL_BYTES = 2 * 1024 * 1024;
+const COST_SHEET_MAX_SIZE_BYTES = 2 * 1024 * 1024;
 const parsedAttachmentMaxSize = Number(process.env.ATTACHMENT_MAX_SIZE_BYTES ?? DEFAULT_ATTACHMENT_MAX_SIZE_BYTES);
 const parsedNonPhotoAttachmentsMaxTotal = Number(
   process.env.NON_PHOTO_ATTACHMENTS_MAX_TOTAL_BYTES ?? DEFAULT_NON_PHOTO_ATTACHMENTS_MAX_TOTAL_BYTES
@@ -43,6 +46,7 @@ function resolveAttachmentKind(mimeType: string): AttachmentKind {
   if (mimeType.includes("pdf")) return "pdf";
   if (mimeType.includes("word") || mimeType.includes("officedocument.wordprocessingml")) return "word";
   if (mimeType.includes("image")) return "image";
+  if (mimeType.includes("csv")) return "spreadsheet";
   if (mimeType.includes("sheet") || mimeType.includes("excel") || mimeType.includes("spreadsheet")) return "spreadsheet";
   return "other";
 }
@@ -225,7 +229,7 @@ export class FilesService {
     return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   }
 
-  uploadFiles(params: {
+  async uploadFiles(params: {
     user: SessionUser;
     projectId: string;
     versionId: string;
@@ -241,22 +245,37 @@ export class FilesService {
       throw new BadRequestException("\u53ea\u6709\u8349\u7a3f\u7248\u672c\u5141\u8bb8\u4e0a\u4f20\u9644\u4ef6");
     }
 
-    const slot = buildVersionAttachmentSlots({
+    const versionAttachments = this.data.listAttachments(params.projectId, params.versionId);
+    const isCostSheetUpload = params.slotKey === "cost_sheet";
+    const slot = isCostSheetUpload
+      ? {
+          key: "cost_sheet" as const,
+          label: "工程量清单 Excel",
+          description: "上传正式工程量清单 Excel，由系统解析总价、分组和明细。",
+          required: false,
+          maxFiles: 1,
+          acceptedKinds: ["spreadsheet" as const],
+          status: "optional" as const,
+          attachments: versionAttachments.filter((item) => item.slotKey === "cost_sheet")
+        }
+      : buildVersionAttachmentSlots({
       category: version.snapshot.projectCategory,
       sourceType: version.snapshot.issueSourceType,
-      attachments: this.data.listAttachments(params.projectId, params.versionId)
+      attachments: versionAttachments
     }).find((item) => item.key === params.slotKey);
     if (!slot) {
       throw new BadRequestException("\u4e0d\u5b58\u5728\u7684\u6750\u6599\u69fd\u4f4d");
     }
-    if (slot.attachments.length + params.files.length > slot.maxFiles) {
+    if (isCostSheetUpload && params.files.length !== 1) {
+      throw new BadRequestException("工程量清单每次只能上传 1 个 Excel 文件");
+    }
+    if (!isCostSheetUpload && slot.attachments.length + params.files.length > slot.maxFiles) {
       throw new BadRequestException(`${slot.label} \u6700\u591a\u4e0a\u4f20 ${slot.maxFiles} \u4e2a\u6587\u4ef6`);
     }
 
-    const versionAttachments = this.data.listAttachments(params.projectId, params.versionId);
-    if (params.slotKey !== "issue_photos") {
+    if (params.slotKey !== "issue_photos" && !isCostSheetUpload) {
       const existingNonPhotoTotal = versionAttachments
-        .filter((item) => item.slotKey !== "issue_photos")
+        .filter((item) => item.slotKey !== "issue_photos" && item.slotKey !== "cost_sheet")
         .reduce((sum, item) => sum + item.size, 0);
       const incomingNonPhotoTotal = params.files.reduce((sum, file) => sum + file.size, 0);
 
@@ -270,10 +289,14 @@ export class FilesService {
     const now = new Date().toISOString();
     const preparedFiles = params.files.map((file) => {
       const normalizedFileName = normalizeLatin1Utf8Text(file.originalname);
-      const kind = resolveAttachmentKind(file.mimetype);
-      if (file.size > ATTACHMENT_MAX_SIZE_BYTES) {
+      const kind =
+        isCostSheetUpload && /\.(csv|xls|xlsx)$/i.test(normalizedFileName)
+          ? "spreadsheet"
+          : resolveAttachmentKind(file.mimetype);
+      const sizeLimit = isCostSheetUpload ? COST_SHEET_MAX_SIZE_BYTES : ATTACHMENT_MAX_SIZE_BYTES;
+      if (file.size > sizeLimit) {
         throw new BadRequestException(
-          `${normalizedFileName} \u8d85\u8fc7\u5355\u4e2a\u6587\u4ef6\u5927\u5c0f\u9650\u5236 ${formatAttachmentSizeLimit(ATTACHMENT_MAX_SIZE_BYTES)}`
+          `${normalizedFileName} \u8d85\u8fc7\u5355\u4e2a\u6587\u4ef6\u5927\u5c0f\u9650\u5236 ${formatAttachmentSizeLimit(sizeLimit)}`
         );
       }
       if (!slot.acceptedKinds.includes(kind)) {
@@ -283,7 +306,9 @@ export class FilesService {
       return { file, kind, normalizedFileName };
     });
 
-    const createdAttachments = preparedFiles.map(({ file, kind, normalizedFileName }, index) => {
+    const createdAttachments: Attachment[] = [];
+    for (const { file, kind, normalizedFileName } of preparedFiles) {
+      const index = createdAttachments.length;
       const storageKey = path.join(
         params.projectId,
         `${Date.now()}-${index}-${sanitizeFileName(normalizedFileName)}`
@@ -304,17 +329,67 @@ export class FilesService {
         uploadedAt: now
       });
 
-      const canParse = ["pdf", "word", "image", "spreadsheet"].includes(kind);
-      this.data.createParseResult({
-        attachmentId: attachment.id,
-        status: canParse ? "completed" : "failed",
-        extractedText: canParse ? `\u5df2\u4ece ${normalizedFileName} \u63d0\u53d6\u9644\u4ef6\u6458\u8981` : undefined,
-        summary: canParse ? `${slot.label}\uff1a${normalizedFileName} \u5df2\u7eb3\u5165 AI \u5ba1\u6838\u3002` : undefined,
-        failureReason: canParse ? undefined : `\u6682\u4e0d\u652f\u6301\u89e3\u6790 ${file.mimetype}`
-      });
+      if (isCostSheetUpload) {
+        const parsedSheet = await parseCostSheet(readUploadedFile(file), {
+          attachmentId: attachment.id,
+          fileName: normalizedFileName,
+          fileSize: file.size,
+          mimeType: file.mimetype
+        });
 
-      return attachment;
-    });
+        this.data.createParseResult({
+          attachmentId: attachment.id,
+          status: parsedSheet.status,
+          extractedText: JSON.stringify({
+            totalAmount: parsedSheet.totalAmount,
+            detailRowCount: parsedSheet.detailRowCount,
+            sections: parsedSheet.sections.map((section) => ({
+              name: section.name,
+              total: section.total,
+              subtotal: section.subtotal,
+              tax: section.tax
+            })),
+            warnings: parsedSheet.warnings
+          }),
+          summary:
+            parsedSheet.status === "completed"
+              ? `工程量清单已解析：识别总价 ${parsedSheet.totalAmount} 元，明细 ${parsedSheet.detailRowCount} 行。`
+              : `工程量清单解析失败：${parsedSheet.warnings.join("；")}`,
+          failureReason: parsedSheet.status === "failed" ? parsedSheet.warnings.join("；") : undefined
+        });
+
+        for (const existing of slot.attachments) {
+          const removed = this.data.deleteAttachment(existing.id);
+          const removedPath = path.join(resolveUploadDirPath(), removed.storageKey);
+          if (existsSync(removedPath)) unlinkSync(removedPath);
+        }
+
+        this.data.updateVersion(params.versionId, (current) => ({
+          ...current,
+          snapshot: {
+            ...current.snapshot,
+            costInputMode: "upload",
+            uploadedCostSheet: parsedSheet,
+            budgetAmount:
+              parsedSheet.status === "completed" && typeof parsedSheet.totalAmount === "number"
+                ? parsedSheet.totalAmount
+                : current.snapshot.budgetAmount
+          },
+          updatedAt: now
+        }));
+      } else {
+        const canParse = ["pdf", "word", "image", "spreadsheet"].includes(kind);
+        this.data.createParseResult({
+          attachmentId: attachment.id,
+          status: canParse ? "completed" : "failed",
+          extractedText: canParse ? `\u5df2\u4ece ${normalizedFileName} \u63d0\u53d6\u9644\u4ef6\u6458\u8981` : undefined,
+          summary: canParse ? `${slot.label}\uff1a${normalizedFileName} \u5df2\u7eb3\u5165 AI \u5ba1\u6838\u3002` : undefined,
+          failureReason: canParse ? undefined : `\u6682\u4e0d\u652f\u6301\u89e3\u6790 ${file.mimetype}`
+        });
+      }
+
+      createdAttachments.push(attachment);
+    }
 
     this.data.addAuditLog({
       actorId: params.user.id,
@@ -362,6 +437,19 @@ export class FilesService {
     const absolutePath = path.join(resolveUploadDirPath(), removed.storageKey);
     if (existsSync(absolutePath)) {
       unlinkSync(absolutePath);
+    }
+    if (removed.slotKey === "cost_sheet") {
+      this.data.updateVersion(removed.versionId, (current) => ({
+        ...current,
+        snapshot: {
+          ...current.snapshot,
+          uploadedCostSheet:
+            current.snapshot.uploadedCostSheet?.attachmentId === removed.id
+              ? undefined
+              : current.snapshot.uploadedCostSheet
+        },
+        updatedAt: new Date().toISOString()
+      }));
     }
     this.data.addAuditLog({
       actorId: user.id,
