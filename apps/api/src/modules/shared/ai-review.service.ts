@@ -56,6 +56,8 @@ function clampScore(value: unknown, fallback: number): number {
   return Math.max(0, Math.min(100, Math.round(normalized)));
 }
 
+const MIN_AI_REVIEW_TIMEOUT_MS = 30 * 60 * 1000;
+
 function normalizeSeverity(
   value: unknown,
   fallback: ReviewFinding["severity"] = "medium"
@@ -579,8 +581,13 @@ export class AiReviewService {
   }
 
   private getTimeoutMs(): number {
-    const timeout = Number(process.env.AI_API_TIMEOUT_MS || 900000);
-    return Number.isFinite(timeout) && timeout > 0 ? timeout : 120000;
+    const configuredTimeout = Number(process.env.AI_API_TIMEOUT_MS || MIN_AI_REVIEW_TIMEOUT_MS);
+    const safeTimeout =
+      Number.isFinite(configuredTimeout) && configuredTimeout > 0
+        ? configuredTimeout
+        : MIN_AI_REVIEW_TIMEOUT_MS;
+
+    return Math.max(safeTimeout, MIN_AI_REVIEW_TIMEOUT_MS);
   }
 
   private async requestOpenAiCompatibleReview(

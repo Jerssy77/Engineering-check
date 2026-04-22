@@ -21,7 +21,7 @@ services:
       - key: AI_MODEL_NAME
         sync: false
       - key: AI_API_TIMEOUT_MS
-        value: 900000
+        value: 1800000
       - key: APP_TIMEZONE
         value: Asia/Shanghai
       - key: APP_DATA_FILE
