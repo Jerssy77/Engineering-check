@@ -41,7 +41,7 @@ AI_API_BASE_URL="https://api.openai.com/v1"
 AI_API_PATH="/chat/completions"
 AI_API_KEY=""
 AI_MODEL_NAME="gpt-4.1-mini"
-AI_API_TIMEOUT_MS="60000"
+AI_API_TIMEOUT_MS="900000"
 AI_ALLOW_DEMO_FALLBACK="false"
 ```
 

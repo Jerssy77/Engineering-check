@@ -282,13 +282,15 @@ export default function ReportPage({
     return map;
   }, [report?.aiSummary.citations]);
 
-  const load = async () => {
+    const load = async (options?: { background?: boolean; suppressErrors?: boolean }) => {
     if (!session) {
       router.replace("/login");
       return;
     }
 
-    setLoading(true);
+    if (!options?.background) {
+      setLoading(true);
+    }
     try {
       const response = await apiRequest<FinalReviewResponse>(
         `/projects/${routeParams.projectId}/versions/${routeParams.versionId}/final-review-report`,
@@ -298,9 +300,13 @@ export default function ReportPage({
       setReport(response);
       setSelectedWritebackIds(response.finalDecision.selectedWritebackIds ?? []);
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "加载最终审核报告失败");
+      if (!options?.suppressErrors) {
+        messageApi.error(error instanceof Error ? error.message : "加载最终审核报告失败");
+      }
     } finally {
-      setLoading(false);
+      if (!options?.background) {
+        setLoading(false);
+      }
     }
   };
 
@@ -308,6 +314,17 @@ export default function ReportPage({
     void load();
   }, [routeParams.projectId, routeParams.versionId]);
 
+  useEffect(() => {
+    if (report?.version.status !== "ai_reviewing") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void load({ background: true, suppressErrors: true });
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [report?.version.status, routeParams.projectId, routeParams.versionId]);
   const triggerBlobDownload = (blob: Blob, fileName: string) => {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");

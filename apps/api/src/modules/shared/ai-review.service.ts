@@ -520,6 +520,13 @@ export class AiReviewService {
       const payload = extractJsonBlock(upstream.content);
       return mergeExternalReview(fallback, payload, upstream.modelName);
     } catch (error) {
+      const isAbort =
+        error instanceof Error && (error.name === "AbortError" || /aborted|abort/i.test(error.message));
+      if (isAbort) {
+        throw new BadGatewayException(
+          `AI 调用超时（${this.getTimeoutMs()}ms），请求已被中止，请重试或提高 AI_API_TIMEOUT_MS`
+        );
+      }
       if (this.allowDemoFallback()) {
         const fallbackResult = normalizeAiReview(fallback) ?? fallback;
         return {
@@ -572,7 +579,7 @@ export class AiReviewService {
   }
 
   private getTimeoutMs(): number {
-    const timeout = Number(process.env.AI_API_TIMEOUT_MS || 120000);
+    const timeout = Number(process.env.AI_API_TIMEOUT_MS || 900000);
     return Number.isFinite(timeout) && timeout > 0 ? timeout : 120000;
   }
 
