@@ -328,6 +328,17 @@ export class DemoDataService {
       (item) => item.projectId !== projectId || item.versionId !== versionId
     );
   }
+  removeQuotaUsageByOrganizationAndRange(organizationId: string, startIso: string, endIso: string): number {
+    const start = new Date(startIso);
+    const end = new Date(endIso);
+    const before = this.state.quotaLedger.length;
+    this.state.quotaLedger = this.state.quotaLedger.filter((item) => {
+      if (item.organizationId !== organizationId) return true;
+      const consumedAt = new Date(item.consumedAt);
+      return consumedAt < start || consumedAt > end;
+    });
+    return before - this.state.quotaLedger.length;
+  }
   addOverride(overrideRecord: Omit<OverrideGrant, "id">): OverrideGrant { const created: OverrideGrant = { ...overrideRecord, id: createId("override") }; this.state.overrides.push(created); return created; }
 
   markOverrideUsed(overrideId: string, usedAt: string): OverrideGrant {

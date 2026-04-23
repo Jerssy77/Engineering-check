@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, Col, List, Row, Table, Tag, Typography, message } from "antd";
+import { Button, Card, Col, List, Popconfirm, Row, Table, Tag, Typography, message } from "antd";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -26,37 +26,60 @@ export default function AdminPage() {
   const router = useRouter();
   const [messageApi, contextHolder] = message.useMessage();
   const [loading, setLoading] = useState(true);
+  const [resettingOrgId, setResettingOrgId] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [quotaBoard, setQuotaBoard] = useState<QuotaBoardResponse | null>(null);
+  const session = getSession();
+  const canResetQuota = session?.user.role === "reviewer";
+
+  const load = async () => {
+    if (!session) {
+      router.replace("/login");
+      return;
+    }
+    if (session.user.role === "submitter") {
+      router.replace("/projects");
+      return;
+    }
+    setLoading(true);
+    try {
+      const [dashboardResponse, quotaResponse] = await Promise.all([
+        apiRequest<DashboardResponse>("/admin/dashboard", {}, session),
+        apiRequest<QuotaBoardResponse>("/admin/quota-usage", {}, session)
+      ]);
+      setDashboard(dashboardResponse);
+      setQuotaBoard(quotaResponse);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "管理看板加载失败");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      const session = getSession();
-      if (!session) {
-        router.replace("/login");
-        return;
-      }
-      if (session.user.role === "submitter") {
-        router.replace("/projects");
-        return;
-      }
-      setLoading(true);
-      try {
-        const [dashboardResponse, quotaResponse] = await Promise.all([
-          apiRequest<DashboardResponse>("/admin/dashboard", {}, session),
-          apiRequest<QuotaBoardResponse>("/admin/quota-usage", {}, session)
-        ]);
-        setDashboard(dashboardResponse);
-        setQuotaBoard(quotaResponse);
-      } catch (error) {
-        messageApi.error(error instanceof Error ? error.message : "管理看板加载失败");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     void load();
   }, []);
+
+  const resetCityQuota = async (organizationId: string, organizationName: string) => {
+    if (!session || !canResetQuota) {
+      messageApi.warning("只有终审人可以重置额度");
+      return;
+    }
+    setResettingOrgId(organizationId);
+    try {
+      const response = await apiRequest<{ removedCount: number }>(
+        `/quota/organizations/${organizationId}/reset-weekly`,
+        { method: "POST", body: JSON.stringify({}) },
+        session
+      );
+      messageApi.success(`${organizationName} 额度已重置，清理 ${response.removedCount} 条本周台账`);
+      await load();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "额度重置失败");
+    } finally {
+      setResettingOrgId(null);
+    }
+  };
 
   const costColumns = useMemo(
     () => [
@@ -94,7 +117,39 @@ export default function AdminPage() {
         <Col xs={24} xl={12}>
           <Card className="glass-card" loading={loading} styles={{ body: { padding: 22 } }}>
             <Typography.Title level={4}>{"城市公司额度使用"}</Typography.Title>
-            <Table rowKey="organizationId" pagination={false} dataSource={quotaBoard?.organizations ?? []} columns={[{ title: "城市公司", dataIndex: "organizationName" }, { title: "本周已用", dataIndex: "usedThisWeek" }, { title: "本周剩余", dataIndex: "remainingThisWeek" }]} />
+            <Table
+              rowKey="organizationId"
+              pagination={false}
+              dataSource={quotaBoard?.organizations ?? []}
+              columns={[
+                { title: "城市公司", dataIndex: "organizationName" },
+                { title: "本周已用", dataIndex: "usedThisWeek" },
+                { title: "本周剩余", dataIndex: "remainingThisWeek" },
+                {
+                  title: "操作",
+                  render: (item: { organizationId: string; organizationName: string }) =>
+                    canResetQuota ? (
+                      <Popconfirm
+                        title="确认重置本周额度？"
+                        description={`将清空 ${item.organizationName} 本周 AI 送审额度台账。`}
+                        onConfirm={() => void resetCityQuota(item.organizationId, item.organizationName)}
+                        okText="确认重置"
+                        cancelText="取消"
+                      >
+                        <Button
+                          size="small"
+                          danger
+                          loading={resettingOrgId === item.organizationId}
+                        >
+                          重置额度
+                        </Button>
+                      </Popconfirm>
+                    ) : (
+                      <Typography.Text type="secondary">仅终审人可操作</Typography.Text>
+                    )
+                }
+              ]}
+            />
           </Card>
         </Col>
         <Col xs={24} xl={12}>

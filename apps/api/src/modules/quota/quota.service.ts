@@ -3,6 +3,7 @@ import { SessionUser, calculateSubmissionEligibility, getWeekWindow } from "@pro
 
 import { DemoDataService } from "../shared/demo-data.service";
 import { GrantOverrideDto } from "./dto/grant-override.dto";
+import { ResetCityQuotaDto } from "./dto/reset-city-quota.dto";
 
 @Injectable()
 export class QuotaService {
@@ -110,6 +111,45 @@ export class QuotaService {
           projectTitle: this.data.getProject(item.projectId).title
         }))
         .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    };
+  }
+
+  resetCityWeeklyQuota(organizationId: string, user: SessionUser, dto: ResetCityQuotaDto) {
+    if (user.role !== "reviewer") {
+      throw new ForbiddenException("只有终审人可以重置城市公司额度");
+    }
+
+    const organization = this.data.getOrganizations().find((item) => item.id === organizationId);
+    if (!organization || organization.kind !== "city_company") {
+      throw new ForbiddenException("仅支持重置城市公司额度");
+    }
+
+    const { start, end } = getWeekWindow(new Date());
+    const removedCount = this.data.removeQuotaUsageByOrganizationAndRange(
+      organizationId,
+      start.toISOString(),
+      end.toISOString()
+    );
+    const now = new Date().toISOString();
+    const reason = dto.reason?.trim() || "终审人手动重置本周额度";
+    const organizationProject = this.data.listProjects().find((item) => item.organizationId === organizationId);
+    if (organizationProject) {
+      this.data.addAuditLog({
+        actorId: user.id,
+        projectId: organizationProject.id,
+        action: "grant_override",
+        detail: `已重置 ${organization.name} 本周 AI 额度，移除 ${removedCount} 条台账；原因：${reason}`,
+        createdAt: now
+      });
+    }
+
+    return {
+      organizationId,
+      organizationName: organization.name,
+      weekStart: start.toISOString(),
+      weekEnd: end.toISOString(),
+      removedCount,
+      board: this.getQuotaUsageBoard(user)
     };
   }
 }

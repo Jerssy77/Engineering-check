@@ -281,6 +281,23 @@ export class FileBackedDataService {
     this.persist();
   }
 
+  removeQuotaUsageByOrganizationAndRange(organizationId: string, startIso: string, endIso: string): number {
+    const start = new Date(startIso);
+    const end = new Date(endIso);
+    const nextLedger = this.state.quotaLedger.filter((item) => {
+      if (item.organizationId !== organizationId) return true;
+      const consumedAt = new Date(item.consumedAt);
+      return consumedAt < start || consumedAt > end;
+    });
+    const removedCount = this.state.quotaLedger.length - nextLedger.length;
+    if (removedCount <= 0) {
+      return 0;
+    }
+    this.state.quotaLedger = nextLedger;
+    this.persist();
+    return removedCount;
+  }
+
   addOverride(overrideRecord: Omit<OverrideGrant, "id">): OverrideGrant {
     const created: OverrideGrant = { ...overrideRecord, id: createId("override") };
     this.state.overrides.push(created);
