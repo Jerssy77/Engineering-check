@@ -188,7 +188,7 @@ function scoreCitation(
   }
 
   if (hasCategoryScope) {
-    if (riskFlagHits === 0 && keywordHits < 2) {
+    if (riskFlagHits === 0 && keywordHits < 3) {
       return 0;
     }
     if (riskFlagHits > 0 && keywordHits === 0) {
@@ -198,7 +198,7 @@ function scoreCitation(
     return (categoryMatches ? 4 : 0) + keywordHits * 3 + riskFlagHits * 4;
   }
 
-  if (keywordHits < 2 && riskFlagHits === 0) {
+  if (keywordHits < 3 && riskFlagHits === 0) {
     return 0;
   }
 
@@ -222,7 +222,7 @@ export function selectNationalNormCitations(params: {
   limit?: number;
 }): NormCitation[] {
   const haystack = buildSearchText(params.snapshot, params.parseResults ?? []);
-  const limit = params.limit ?? 8;
+  const limit = params.limit ?? 5;
 
   return NATIONAL_NORM_PACK
     .filter((citation) => !params.module || citation.applicableModules.includes(params.module))
@@ -230,7 +230,7 @@ export function selectNationalNormCitations(params: {
       citation,
       score: scoreCitation(citation, params.snapshot, haystack)
     }))
-    .filter((item) => item.score > 0)
+    .filter((item) => item.score >= 8)
     .sort((left, right) => right.score - left.score)
     .slice(0, limit)
     .map((item) => item.citation);

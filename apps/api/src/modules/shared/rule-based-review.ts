@@ -330,7 +330,7 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
   const citations = selectNationalNormCitations({
     snapshot,
     parseResults,
-    limit: 8
+    limit: 5
   });
 
   const complianceFindings: ReviewFinding[] = [];
@@ -367,7 +367,7 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
     });
   } else {
     pushFinding(complianceFindings, {
-      severity: complianceTopics.length >= 3 ? "high" : "medium",
+      severity: "medium",
       title: "存在需重点核查的合规事项",
       basis: "基于工程改造常识和国家技术规范，相关作业前需明确作业条件与控制措施。",
       currentState: `当前方案涉及或疑似涉及：${complianceTopics.join("、")}。`,
@@ -378,7 +378,7 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
 
   scenarioCards.slice(0, 4).forEach((card) => {
     pushFinding(complianceFindings, {
-      severity: card.riskFlags?.some((flag) => snapshot.riskFlags?.[flag]) ? "high" : "medium",
+      severity: "medium",
       title: `命中工程场景：${card.scene}`,
       basis: `来自内置 AI 审核技能包场景规则卡 ${card.id}。`,
       currentState: `该项目与「${card.scene}」场景相似，需按场景卡完成材料、合规、成本和技术闭环复核。`,
@@ -563,9 +563,9 @@ export function buildRuleBasedReview(params: ReviewGenerationParams): Omit<AIRev
   );
 
   const verdict =
-    highInternalCount > 0 || highCount >= 3 || budgetSummary.budgetGap !== 0 || missingMaterials.length >= 2
+    highInternalCount > 0 || highCount >= 4 || budgetSummary.budgetGap !== 0 || missingMaterials.length >= 2
       ? "fail"
-      : highCount > 0 || mediumCount >= 3 || duplicateMatches.length > 0
+      : highCount > 0 || mediumCount >= 4 || duplicateMatches.length > 0
         ? "conditional_pass"
         : "pass";
 

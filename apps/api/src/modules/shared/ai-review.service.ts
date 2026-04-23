@@ -492,7 +492,16 @@ function mergeExternalReview(
     generatedAt: new Date().toISOString()
   } satisfies Omit<AIReviewResult, "id">;
 
-  return normalizeAiReview(merged) ?? merged;
+  const normalized = normalizeAiReview(merged) ?? merged;
+  if (normalized.verdict === "fail" && fallback.verdict !== "fail") {
+    return {
+      ...normalized,
+      verdict: "conditional_pass",
+      conclusion: `${normalized.conclusion}（系统已按立项预审口径降为有条件通过：当前未命中预算不一致、关键材料缺失、安全硬风险未控制或核心技术路线不闭环等硬性退回条件。）`
+    };
+  }
+
+  return normalized;
 }
 
 function stringifyPromptInput(params: ReviewGenerationParams, normContext: string, skillPackContext: string): string {
@@ -630,7 +639,7 @@ export class AiReviewService {
     const citations = selectNationalNormCitations({
       snapshot: params.snapshot,
       parseResults: params.parseResults,
-      limit: 8
+      limit: 5
     });
     const normContext = formatNormContext(citations);
     const scenarioCards = selectEngineeringScenarioCards({
@@ -660,6 +669,7 @@ export class AiReviewService {
                 "平台内控硬性要求必须放入 internalControlRequirements，不得伪装成国家规范条文。",
                 "只有命中输入规范片段且能明确给出 citationIds 的内容，才允许进入 mandatoryRequirements 或各模块 mandatoryItems。",
                 "不得仅因为规范片段出现在上下文中就生成强制项；每条强制项必须能对应到本项目的类别、风险勾选、文本描述、附件摘要或专项字段。",
+                "规范片段、场景规则卡或一般合规提醒本身不得作为 verdict=fail 的唯一理由；没有预算不一致、关键材料缺失、安全硬风险未控制或核心技术路线不闭环时，优先给 conditional_pass 或 advisoryRecommendations。",
                 "没有明确规范依据的风险、优化建议或补充问题，一律降级为 advisoryRecommendations 或 advisoryItems。",
                 "成本审核不能只说参考市场价或历史价，要先理解方案意图，再识别冗余、过度配置、重复投入、可替代路径和施工组织优化空间；允许给经验区间，但必须标注需人工复核。",
                 "技术审核要判断路线是否闭环、是否过度、是否缺关键实施约束，并允许生成候选改写段落。",
