@@ -116,12 +116,12 @@ export class QuotaService {
 
   resetCityWeeklyQuota(organizationId: string, user: SessionUser, dto: ResetCityQuotaDto) {
     if (user.role !== "reviewer") {
-      throw new ForbiddenException("只有终审人可以重置城市公司额度");
+      throw new ForbiddenException("\u53ea\u6709\u7ec8\u5ba1\u4eba\u53ef\u4ee5\u91cd\u7f6e\u57ce\u5e02\u516c\u53f8\u989d\u5ea6");
     }
 
     const organization = this.data.getOrganizations().find((item) => item.id === organizationId);
     if (!organization || organization.kind !== "city_company") {
-      throw new ForbiddenException("仅支持重置城市公司额度");
+      throw new ForbiddenException("\u4ec5\u652f\u6301\u91cd\u7f6e\u57ce\u5e02\u516c\u53f8\u989d\u5ea6");
     }
 
     const { start, end } = getWeekWindow(new Date());
@@ -130,15 +130,55 @@ export class QuotaService {
       start.toISOString(),
       end.toISOString()
     );
+
     const now = new Date().toISOString();
-    const reason = dto.reason?.trim() || "终审人手动重置本周额度";
+    const reason = dto.reason?.trim() || "\u7ec8\u5ba1\u4eba\u624b\u52a8\u91cd\u7f6e\u672c\u5468\u989d\u5ea6";
+    const policy = this.data.getQuotaPolicy();
+    const refreshedLedger = this.data.listQuotaLedger();
+    const cityProjects = this.data
+      .listProjects()
+      .filter((item) => item.organizationId === organizationId);
+    let cooldownOverridesGranted = 0;
+
+    cityProjects.forEach((project) => {
+      const projectOverrides = this.data.listOverrides(project.id);
+      const hasReusableCooldownOverride = projectOverrides.some(
+        (item) => !item.used && (item.scope === "cooldown" || item.scope === "both")
+      );
+      if (hasReusableCooldownOverride) {
+        return;
+      }
+
+      const eligibility = calculateSubmissionEligibility({
+        policy,
+        ledger: refreshedLedger,
+        overrides: projectOverrides,
+        versions: this.data.listVersions(project.id),
+        organizationId,
+        currentStatus: project.status
+      });
+      if (eligibility.reason !== "cooldown_active") {
+        return;
+      }
+
+      this.data.addOverride({
+        projectId: project.id,
+        grantedBy: user.id,
+        scope: "cooldown",
+        reason: `${reason}\uff08\u540c\u6b65\u89e3\u9664\u51b7\u5374\uff09`,
+        used: false,
+        createdAt: now
+      });
+      cooldownOverridesGranted += 1;
+    });
+
     const organizationProject = this.data.listProjects().find((item) => item.organizationId === organizationId);
     if (organizationProject) {
       this.data.addAuditLog({
         actorId: user.id,
         projectId: organizationProject.id,
         action: "grant_override",
-        detail: `已重置 ${organization.name} 本周 AI 额度，移除 ${removedCount} 条台账；原因：${reason}`,
+        detail: `\u5df2\u91cd\u7f6e ${organization.name} \u672c\u5468 AI \u989d\u5ea6\uff0c\u79fb\u9664 ${removedCount} \u6761\u53f0\u8d26\uff0c\u53d1\u653e ${cooldownOverridesGranted} \u4e2a\u51b7\u5374\u671f\u7279\u6279\uff1b\u539f\u56e0\uff1a${reason}`,
         createdAt: now
       });
     }
@@ -149,6 +189,7 @@ export class QuotaService {
       weekStart: start.toISOString(),
       weekEnd: end.toISOString(),
       removedCount,
+      cooldownOverridesGranted,
       board: this.getQuotaUsageBoard(user)
     };
   }
