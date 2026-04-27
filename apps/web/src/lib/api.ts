@@ -4,14 +4,30 @@ import { StoredSession, getSession } from "./session";
 
 let preferredBrowserBase: string | null = null;
 
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function isLocalHostname(hostname: string): boolean {
+  return ["localhost", "127.0.0.1"].includes(hostname);
+}
+
 function normalizeConfiguredBase(configured: string, protocol: string, hostname: string): string {
+  const trimmed = configured.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.startsWith("/")) {
+    return stripTrailingSlash(trimmed);
+  }
+
   try {
-    const parsed = new URL(configured);
-    if (["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+    const parsed = new URL(trimmed);
+    if (isLocalHostname(parsed.hostname)) {
       const port = parsed.port || "3001";
       return `${protocol}//${hostname}:${port}`;
     }
-    return configured;
+    return stripTrailingSlash(trimmed);
   } catch {
     return "";
   }
@@ -26,15 +42,21 @@ function resolveApiBaseCandidates(): string[] {
 
   const protocol = window.location.protocol;
   const hostname = window.location.hostname;
+  const isLocal = isLocalHostname(hostname);
+  const sameOriginApi = isLocal ? "" : `${window.location.origin}/api`;
   const fallback3001 = `${protocol}//${hostname}:3001`;
   const fallback3101 = `${protocol}//${hostname}:3101`;
   const normalizedConfigured = configured
     ? normalizeConfiguredBase(configured, protocol, hostname)
     : "";
 
-  const candidates = [preferredBrowserBase, normalizedConfigured, fallback3001, fallback3101].filter(
-    (value): value is string => Boolean(value)
-  );
+  const candidates = [
+    preferredBrowserBase,
+    normalizedConfigured,
+    sameOriginApi,
+    fallback3001,
+    fallback3101
+  ].filter((value): value is string => Boolean(value));
 
   return candidates.filter((value, index) => candidates.indexOf(value) === index);
 }
