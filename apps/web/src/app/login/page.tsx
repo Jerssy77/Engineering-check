@@ -4,7 +4,7 @@ import { LockOutlined, UserOutlined } from "@ant-design/icons";
 import { AuthResponse } from "@property-review/shared";
 import { Button, Form, Input, Space, Typography, message } from "antd";
 import { useRouter } from "next/navigation";
-import { startTransition, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 
 import { apiRequest } from "../../lib/api";
 import { saveSession } from "../../lib/session";
@@ -31,11 +31,18 @@ const PROCESS_STEPS = [
   "通过后输出可行性报告与工程量清单"
 ];
 
+const TENCENT_LOGIN_URL = "https://qualityai.cgr.com.cn/login";
+
 export default function LoginPage() {
   const router = useRouter();
   const [form] = Form.useForm<{ username: string; password: string }>();
   const [messageApi, contextHolder] = message.useMessage();
   const [submitting, setSubmitting] = useState(false);
+  const [isRenderHost, setIsRenderHost] = useState(false);
+
+  useEffect(() => {
+    setIsRenderHost(window.location.hostname.endsWith(".onrender.com"));
+  }, []);
 
   const submit = async (values: { username: string; password: string }) => {
     setSubmitting(true);
@@ -55,6 +62,25 @@ export default function LoginPage() {
       setSubmitting(false);
     }
   };
+
+  if (isRenderHost) {
+    return (
+      <div className="auth-shell">
+        <section className="auth-panel" style={{ maxWidth: 620, margin: "80px auto" }}>
+          <span className="auth-badge">旧环境已停用</span>
+          <Typography.Title level={2} style={{ marginTop: 18 }}>
+            Render 演示环境已完成迁移
+          </Typography.Title>
+          <Typography.Paragraph className="section-copy">
+            当前 Render 地址只保留迁移提示，不再用于填报、审核或下载附件。请统一使用腾讯云正式入口，避免产生分散数据。
+          </Typography.Paragraph>
+          <Button type="primary" size="large" href={TENCENT_LOGIN_URL}>
+            打开腾讯云正式入口
+          </Button>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-shell">
