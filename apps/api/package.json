@@ -7,7 +7,7 @@
     "start:prod": "node dist/apps/api/src/main.js",
     "build": "tsc -p tsconfig.build.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"Add backend tests\"",
+    "test": "tsx --test src/modules/interviews/interviews.spec.ts",
     "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema ../../prisma/schema.prisma"
   },
@@ -20,6 +20,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "exceljs": "^4.4.0",
+    "https-proxy-agent": "^7.0.6",
     "multer": "^1.4.5-lts.1",
     "pdf-lib": "^1.17.1",
     "reflect-metadata": "^0.2.2",

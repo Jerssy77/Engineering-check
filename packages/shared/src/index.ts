@@ -70,6 +70,498 @@ export type RiskFlagKey =
 
 export type RiskFlags = Partial<Record<RiskFlagKey, boolean>>;
 
+export type ProjectExperience = "legacy_form" | "guided_interview";
+export type GuidedInterviewVersion = 1 | 2;
+export type InterviewStage = "necessity" | "feasibility" | "scheme" | "cost" | "decision";
+export type InterviewStatus =
+  | "in_progress"
+  | "awaiting_evidence"
+  | "stage_confirmation"
+  | "fingerprint_confirmation"
+  | "blueprint_compiling"
+  | "stage_supplement"
+  | "scope_confirmation"
+  | "scheme_confirmation"
+  | "cost_confirmation"
+  | "ready_to_submit"
+  | "assessing"
+  | "completed"
+  | "manual_review";
+export type QuestionResponseType =
+  | "single_choice"
+  | "multi_choice"
+  | "short_text"
+  | "number"
+  | "location_form"
+  | "scope_selector"
+  | "fact_form";
+export type LiveDecisionTendency = "leaning_approved" | "needs_information" | "leaning_not_approved";
+export type DecisionOutcome = "approved" | "supplement_required" | "not_approved";
+export type ApprovalRoute = "shadow_human" | "human_budget" | "automatic" | "manual_ai_failure";
+export type ApprovalStatus = "pending" | "effective" | "overridden";
+
+export interface QuestionOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface QuestionDefinition {
+  id: string;
+  stage: Exclude<InterviewStage, "decision">;
+  title: string;
+  helpText?: string;
+  responseType: QuestionResponseType;
+  options?: QuestionOption[];
+  formFields?: FactFormField[];
+  categories: ProjectCategory[];
+  required: boolean;
+  critical: boolean;
+  factKey: string;
+  dependsOn?: { questionId: string; values: string[] };
+  requiredEvidenceSlots?: AttachmentSlotKey[];
+}
+
+export interface ProjectLocationAnswer {
+  propertyName: string;
+  building?: string;
+  floor?: string;
+  area?: string;
+  point: string;
+  impactScope: "single_point" | "partial_area" | "building" | "multi_building" | "unknown";
+}
+
+export interface ScopeSelectionAnswer {
+  included: string[];
+  other?: string;
+}
+
+export interface FactFormField {
+  id: string;
+  label: string;
+  inputType: "text" | "number" | "select";
+  placeholder?: string;
+  unit?: string;
+  required?: boolean;
+  options?: QuestionOption[];
+}
+
+export interface FactFormAnswer {
+  values: Record<string, string | number>;
+}
+
+export type InterviewAnswerValue = string | number | string[] | ProjectLocationAnswer | ScopeSelectionAnswer | FactFormAnswer;
+
+export interface AnswerRecord {
+  id: string;
+  sessionId: string;
+  questionId: string;
+  idempotencyKey?: string;
+  value: InterviewAnswerValue;
+  revision: number;
+  answeredBy: string;
+  answeredAt: string;
+  supersededAt?: string;
+}
+
+export interface EvidenceClaim {
+  id: string;
+  sessionId: string;
+  factKey: string;
+  attachmentIds: string[];
+  evidenceType: "photo" | "work_order" | "inspection" | "test" | "complaint" | "equipment_record" | "other";
+  confirmedBy?: string;
+  confirmedAt?: string;
+}
+
+export interface StageAssessment {
+  id: string;
+  sessionId: string;
+  stage: InterviewStage;
+  tendency: LiveDecisionTendency;
+  summary: string;
+  reasons: string[];
+  missingFacts: string[];
+  implementationConditions?: string[];
+  followUpQuestionIds?: string[];
+  supplementFields?: StageSupplementField[];
+  dataCollectionRecommended?: boolean;
+  scopeCalibration?: ScopeCalibrationProposal;
+  evidenceAttachmentIds: string[];
+  modelName: string;
+  promptVersion: string;
+  knowledgeReleaseId: string;
+  generatedAt: string;
+  invalidatedAt?: string;
+  propositionResults?: Array<{ propositionId: string; status: "established" | "missing" | "contradicted"; rationale: string }>;
+}
+
+export interface ScopeCalibrationProposal {
+  stage: "necessity" | "feasibility";
+  declaredScope: string;
+  supportedScope: string;
+  unsupportedScope: string;
+  reason: string;
+  basis: string[];
+  sourceAssessmentId?: string;
+  modelName: string;
+  promptVersion: string;
+  createdAt: string;
+}
+
+export interface ScopeCalibrationRecord extends ScopeCalibrationProposal {
+  action: "adopt_supported" | "keep_declared" | "correct_supported";
+  confirmedScope: string;
+  comment?: string;
+  confirmedBy: string;
+  confirmedAt: string;
+}
+
+export type FactMaturity = "confirmed" | "measured" | "documented" | "estimated" | "deferred" | "unknown";
+export type FactImpact = "necessity" | "technical_route" | "selection" | "safety" | "quantity" | "acceptance";
+export type ProjectIntent = "corrective_repair" | "lifecycle_renewal" | "quality_upgrade" | "compliance_rectification" | "efficiency_upgrade" | "capacity_upgrade";
+export type ScopeStrategy = "single_object" | "condition_based" | "uniform_standard" | "phased_program";
+export type ReviewGate = "principle" | "scope_strategy" | "implementation_readiness";
+
+export interface ItemFingerprint {
+  discipline: string;
+  system: string;
+  object: string;
+  problemMode: string;
+  proposedAction: string;
+  impactScope: string;
+  intent?: ProjectIntent;
+  businessObjective?: string;
+  scopeStrategy?: ScopeStrategy;
+  basis: string[];
+  modelName: string;
+  promptVersion: string;
+  confirmedAt?: string;
+}
+
+export interface ReviewProposition {
+  id: string;
+  stage: "necessity" | "feasibility";
+  statement: string;
+  gate?: ReviewGate;
+  requiredFacts: Array<{ key: string; label: string; maturity: FactMaturity; impacts: FactImpact[] }>;
+  passCondition: string;
+  rejectCondition: string;
+}
+
+export interface ReviewBlueprint {
+  id: string;
+  version: number;
+  fingerprintKey: string;
+  summary: string;
+  propositions: ReviewProposition[];
+  routeFactors: string[];
+  candidateRoutes: Array<{ name: string; mechanism: string; applicability: string[]; exclusions: string[]; criticalParameters: string[] }>;
+  deferredAllowed: string[];
+  antiEvasionTerms: string[];
+  modelName: string;
+  promptVersion: string;
+  createdAt: string;
+}
+
+export interface TechnicalRoute {
+  id: string;
+  name: string;
+  kind: "recommended" | "conditional" | "rejected";
+  mechanism: string;
+  applicability: string[];
+  exclusionReasons: string[];
+  criticalParameters: string[];
+  interfaces: string[];
+  executionSequence: string[];
+  acceptanceTargets: string[];
+}
+
+export interface SchemeReview {
+  passed: boolean;
+  revision: number;
+  defects: Array<{ code: string; message: string; severity: "blocking" | "warning" }>;
+  summary: string;
+  modelName: string;
+  promptVersion: string;
+  reviewedAt: string;
+}
+
+export interface NecessityUnderstanding {
+  summary: string;
+  facts: string[];
+  missingFacts: string[];
+  followUpQuestionId?: string;
+  evidenceRequest?: {
+    purpose: string;
+    acceptedTypes: EvidenceClaim["evidenceType"][];
+    required: boolean;
+  };
+  modelName: string;
+  promptVersion: string;
+  confirmedAt?: string;
+  disagreement?: string;
+}
+
+export interface StageSupplementRequest {
+  stage: "necessity" | "feasibility";
+  summary: string;
+  reasons: string[];
+  missingFacts: string[];
+  questionIds: string[];
+  fields: StageSupplementField[];
+  dataCollectionRecommended?: boolean;
+  dataCollection?: StageDataCollectionTemplate;
+  draftValues?: Record<string, string | number>;
+  modelName: string;
+  promptVersion: string;
+  createdAt: string;
+}
+
+export interface StageDataCollectionTemplate {
+  title: string;
+  description: string;
+  rowLabel: string;
+  instructions: string[];
+  maxRows: number;
+  columns: StageDataCollectionColumn[];
+  modelName: string;
+  promptVersion: string;
+}
+
+export interface StageDataCollectionColumn {
+  id: string;
+  label: string;
+  dataType: "text" | "number" | "date" | "select";
+  unit?: string;
+  required: boolean;
+  options?: string[];
+}
+
+export interface StageSupplementField {
+  id: string;
+  label: string;
+  inputType: "text" | "textarea" | "number" | "select";
+  placeholder?: string;
+  unit?: string;
+  required: boolean;
+  options?: QuestionOption[];
+}
+
+export interface StageSupplementFact {
+  stage: "necessity" | "feasibility";
+  assessmentId: string;
+  values: Record<string, string | number>;
+  labels: Record<string, string>;
+  submittedAt: string;
+}
+
+export type SchemeModuleKey =
+  | "objective"
+  | "scope"
+  | "process"
+  | "materials"
+  | "risk_controls"
+  | "acceptance";
+
+export interface SchemeParameter {
+  name: string;
+  recommendedValue?: string;
+  allowedRange?: string;
+  confirmationMethod: string;
+  status: "recommended" | "range" | "field_confirm";
+}
+
+export interface SchemeModule {
+  key: SchemeModuleKey;
+  title: string;
+  content: string;
+  basis: string[];
+  parameters?: SchemeParameter[];
+  modelName?: string;
+  promptVersion?: string;
+  confirmed: boolean;
+  editedBy?: string;
+  editReason?: string;
+  updatedAt: string;
+}
+
+export interface SchemeOption {
+  id: string;
+  title: string;
+  kind: "recommended" | "conditional";
+  summary: string;
+  applicability: string[];
+  tradeoffs: {
+    resolution: string;
+    durability: string;
+    constructionImpact: string;
+    risk: string;
+    costLevel: string;
+  };
+  modules: SchemeModule[];
+  costRows: CostMatrixRow[];
+}
+
+export interface HistoricalCostBenchmark {
+  itemName: string;
+  unit: string;
+  sampleCount: number;
+  medianUnitPrice?: number;
+  lowerUnitPrice?: number;
+  upperUnitPrice?: number;
+  comparisonScope: string;
+  insufficientSample: boolean;
+  source?: "historical_approved" | "ai_market_estimate";
+  basis?: string;
+  asOf?: string;
+  disclaimer?: string;
+}
+
+export interface GuidedDecision {
+  id: string;
+  sessionId: string;
+  outcome: DecisionOutcome;
+  route: ApprovalRoute;
+  status: ApprovalStatus;
+  reasons: string[];
+  conditions: string[];
+  originalOutcome?: DecisionOutcome;
+  overrideReasonCode?: string;
+  overrideComment?: string;
+  decidedBy: string;
+  decidedAt: string;
+  modelName: string;
+  promptVersion: string;
+  knowledgeReleaseId: string;
+}
+
+export interface InterviewSession {
+  id: string;
+  projectId: string;
+  versionId: string;
+  knowledgeReleaseId: string;
+  category: ProjectCategory;
+  guidedVersion?: GuidedInterviewVersion;
+  stage: InterviewStage;
+  status: InterviewStatus;
+  tendency: LiveDecisionTendency;
+  tendencyReasons: string[];
+  nextQuestionId?: string;
+  answerIds: string[];
+  evidenceClaimIds: string[];
+  assessmentIds: string[];
+  necessityUnderstanding?: NecessityUnderstanding;
+  fingerprint?: ItemFingerprint;
+  reviewBlueprint?: ReviewBlueprint;
+  reviewContextStartedAt?: string;
+  supplementRound?: Partial<Record<"necessity" | "feasibility", number>>;
+  declaredScope?: string;
+  confirmedScope?: string;
+  scopeCalibration?: ScopeCalibrationProposal;
+  scopeCalibrationHistory?: ScopeCalibrationRecord[];
+  stageSupplement?: StageSupplementRequest;
+  stageSupplementFacts?: StageSupplementFact[];
+  schemeOptions?: SchemeOption[];
+  technicalRoutes?: TechnicalRoute[];
+  schemeReview?: SchemeReview;
+  selectedSchemeOptionId?: string;
+  schemeSelectionReason?: string;
+  answerDraft?: { questionId: string; value: InterviewAnswerValue; savedAt: string };
+  schemeModules: SchemeModule[];
+  generatedCostRows: CostMatrixRow[];
+  costBenchmarks: HistoricalCostBenchmark[];
+  affectedQuestionIds: string[];
+  aiFailureReason?: string;
+  decisionId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIProviderConfigView {
+  enabled: boolean;
+  provider: "demo" | "openai_compatible";
+  baseUrl: string;
+  stageModel: string;
+  schemeModel: string;
+  decisionModel: string;
+  blueprintModel?: string;
+  routeModel?: string;
+  reviewModel?: string;
+  reasoning?: Partial<Record<"fingerprint" | "blueprint" | "necessity" | "feasibility" | "route" | "scheme" | "review" | "decision", "low" | "medium" | "high" | "xhigh" | "max">>;
+  embeddingModel: string;
+  hasApiKey: boolean;
+  maskedApiKey?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface StoredAIProviderConfig extends Omit<AIProviderConfigView, "hasApiKey" | "maskedApiKey"> {
+  encryptedApiKey?: string;
+  apiKeyIv?: string;
+  apiKeyTag?: string;
+}
+
+export type AIUsageOperation = "fingerprint" | "blueprint" | "necessity" | "feasibility" | "data_collection" | "scheme" | "review" | "decision" | "connection_test";
+
+export interface AIUsageRecord {
+  id: string;
+  projectId?: string;
+  sessionId?: string;
+  projectTitle?: string;
+  operation: AIUsageOperation;
+  model: string;
+  status: "success" | "failed";
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+  usageEstimated: boolean;
+  durationMs: number;
+  error?: string;
+  createdAt: string;
+}
+
+export interface KnowledgeRelease {
+  id: string;
+  version: number;
+  name: string;
+  status: "draft" | "published" | "archived";
+  categories: ProjectCategory[];
+  questions: QuestionDefinition[];
+  schemeTemplates: Partial<Record<ProjectCategory, Partial<Record<SchemeModuleKey, string>>>>;
+  changeNote: string;
+  createdBy: string;
+  createdAt: string;
+  publishedAt?: string;
+}
+
+export function resolveGuidedApprovalRoute(params: {
+  outcome: DecisionOutcome;
+  budgetAmount: number;
+  formalAutoApprovalEnabled: boolean;
+}): ApprovalRoute {
+  if (params.outcome === "approved" && params.budgetAmount > 200000) {
+    return "human_budget";
+  }
+  if (params.outcome === "approved" && params.formalAutoApprovalEnabled) {
+    return "automatic";
+  }
+  return "shadow_human";
+}
+
+export function validateGuidedCostClosure(rows: CostMatrixRow[], declaredBudget: number): string[] {
+  const issues: string[] = [];
+  if (!rows.length) issues.push("missing_cost_rows");
+  if (rows.some((row) => !row.itemName.trim() || !row.unit.trim() || row.quantity <= 0 || row.unitPrice <= 0)) {
+    issues.push("incomplete_cost_row");
+  }
+  const calculated = Math.round(rows.reduce((sum, row) => sum + row.quantity * row.unitPrice, 0) * 100) / 100;
+  if (calculated !== Math.round(declaredBudget * 100) / 100) issues.push("budget_not_closed");
+  return issues;
+}
+
 export type CategorySpecificFields = Partial<
   Record<ProjectCategory, Record<string, string | number | boolean>>
 >;
@@ -122,6 +614,12 @@ export interface CostMatrixRow {
   quantity: number;
   unitPrice: number;
   remark: string;
+  referenceUnitPriceLow?: number;
+  referenceUnitPriceHigh?: number;
+  referencePriceBasis?: string;
+  referencePriceAsOf?: string;
+  estimateSource?: "ai_knowledge" | "historical_case" | "user_input";
+  estimateAssumption?: string;
 }
 
 export type CostInputMode = "online" | "upload";
@@ -459,6 +957,8 @@ export interface Project {
   title: string;
   category: ProjectCategory;
   status: ProjectStatus;
+  experience?: ProjectExperience;
+  guidedVersion?: GuidedInterviewVersion;
   createdAt: string;
   updatedAt: string;
 }

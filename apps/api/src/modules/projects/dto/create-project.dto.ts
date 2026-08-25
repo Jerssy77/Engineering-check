@@ -5,25 +5,30 @@ export class CreateProjectDto {
   @MinLength(3)
   projectName!: string;
 
-  @IsIn(["mep_upgrade", "fire_safety", "energy_retrofit", "civil_upgrade", "plumbing_drainage"])
-  projectCategory!: "mep_upgrade" | "fire_safety" | "energy_retrofit" | "civil_upgrade" | "plumbing_drainage";
+  @IsIn(["mep_upgrade", "civil_upgrade"])
+  projectCategory!: "mep_upgrade" | "civil_upgrade";
 
   @IsIn(["low", "medium", "high"])
-  priority!: "low" | "medium" | "high";
+  @IsOptional()
+  priority?: "low" | "medium" | "high";
 
   @IsNumber()
   @Min(0)
-  budgetAmount!: number;
+  @IsOptional()
+  budgetAmount?: number;
 
   @IsDateString()
-  expectedStartDate!: string;
+  @IsOptional()
+  expectedStartDate?: string;
 
   @IsDateString()
-  expectedEndDate!: string;
+  @IsOptional()
+  expectedEndDate?: string;
 
   @IsString()
   @MinLength(2)
-  propertyName!: string;
+  @IsOptional()
+  propertyName?: string;
 
   @IsOptional()
   @IsString()
@@ -46,7 +51,8 @@ export class CreateProjectDto {
   equipmentPoint?: string;
 
   @IsIn(["inspection", "complaint", "work_order", "safety_hazard", "energy_optimization", "repair_renewal", "other"])
-  issueSourceType!: "inspection" | "complaint" | "work_order" | "safety_hazard" | "energy_optimization" | "repair_renewal" | "other";
+  @IsOptional()
+  issueSourceType?: "inspection" | "complaint" | "work_order" | "safety_hazard" | "energy_optimization" | "repair_renewal" | "other";
 
   @IsOptional()
   @IsString()

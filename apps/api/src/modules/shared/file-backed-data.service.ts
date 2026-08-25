@@ -6,8 +6,14 @@ import {
   Attachment,
   AttachmentParseResult,
   AuditLog,
+  AIUsageRecord,
+  AnswerRecord,
   DEFAULT_QUOTA_POLICY,
+  EvidenceClaim,
+  GuidedDecision,
   HumanDecision,
+  InterviewSession,
+  KnowledgeRelease,
   Organization,
   OverrideGrant,
   Project,
@@ -16,6 +22,8 @@ import {
   QuotaPolicy,
   QuotaUsageLedger,
   SessionUser,
+  StageAssessment,
+  StoredAIProviderConfig,
   User,
   createId
 } from "@property-review/shared";
@@ -42,6 +50,14 @@ interface StoreState {
   overrides: OverrideGrant[];
   quotaLedger: QuotaUsageLedger[];
   auditLogs: AuditLog[];
+  aiUsageRecords: AIUsageRecord[];
+  interviewSessions: InterviewSession[];
+  answerRecords: AnswerRecord[];
+  evidenceClaims: EvidenceClaim[];
+  stageAssessments: StageAssessment[];
+  guidedDecisions: GuidedDecision[];
+  knowledgeReleases: KnowledgeRelease[];
+  aiProviderConfig?: StoredAIProviderConfig;
   quotaPolicy: QuotaPolicy;
 }
 
@@ -62,6 +78,14 @@ function normalizeState(raw: Partial<StoreState> | undefined): StoreState {
     overrides: raw?.overrides ?? [],
     quotaLedger: raw?.quotaLedger ?? [],
     auditLogs: raw?.auditLogs ?? [],
+    aiUsageRecords: raw?.aiUsageRecords ?? [],
+    interviewSessions: raw?.interviewSessions ?? [],
+    answerRecords: raw?.answerRecords ?? [],
+    evidenceClaims: raw?.evidenceClaims ?? [],
+    stageAssessments: raw?.stageAssessments ?? [],
+    guidedDecisions: raw?.guidedDecisions ?? [],
+    knowledgeReleases: raw?.knowledgeReleases ?? [],
+    aiProviderConfig: raw?.aiProviderConfig,
     quotaPolicy: raw?.quotaPolicy ?? { ...DEFAULT_QUOTA_POLICY }
   };
 }
@@ -101,6 +125,14 @@ function buildSeedState(): StoreState {
     overrides: seed.listOverrides(),
     quotaLedger: seed.listQuotaLedger(),
     auditLogs: seed.listAuditLogs(),
+    aiUsageRecords: [],
+    interviewSessions: [],
+    answerRecords: [],
+    evidenceClaims: [],
+    stageAssessments: [],
+    guidedDecisions: [],
+    knowledgeReleases: [],
+    aiProviderConfig: undefined,
     quotaPolicy: seed.getQuotaPolicy()
   };
 }
@@ -191,6 +223,31 @@ export class FileBackedDataService {
   listQuotaLedger(): QuotaUsageLedger[] { return this.state.quotaLedger; }
   listOverrides(projectId?: string): OverrideGrant[] { return projectId ? this.state.overrides.filter((item) => item.projectId === projectId) : this.state.overrides; }
   listAuditLogs(projectId?: string): AuditLog[] { return projectId ? this.state.auditLogs.filter((item) => item.projectId === projectId) : this.state.auditLogs; }
+  listAIUsageRecords(): AIUsageRecord[] { return deepClone(this.state.aiUsageRecords); }
+  listInterviewSessions(projectId?: string): InterviewSession[] { return projectId ? this.state.interviewSessions.filter((item) => item.projectId === projectId) : this.state.interviewSessions; }
+  listAnswerRecords(sessionId?: string): AnswerRecord[] { return sessionId ? this.state.answerRecords.filter((item) => item.sessionId === sessionId) : this.state.answerRecords; }
+  listEvidenceClaims(sessionId?: string): EvidenceClaim[] { return sessionId ? this.state.evidenceClaims.filter((item) => item.sessionId === sessionId) : this.state.evidenceClaims; }
+  listStageAssessments(sessionId?: string): StageAssessment[] { return sessionId ? this.state.stageAssessments.filter((item) => item.sessionId === sessionId) : this.state.stageAssessments; }
+  listGuidedDecisions(sessionId?: string): GuidedDecision[] { return sessionId ? this.state.guidedDecisions.filter((item) => item.sessionId === sessionId) : this.state.guidedDecisions; }
+  listKnowledgeReleases(): KnowledgeRelease[] { return this.state.knowledgeReleases; }
+
+  getInterviewSession(sessionId: string): InterviewSession {
+    const session = this.state.interviewSessions.find((item) => item.id === sessionId);
+    if (!session) throw new NotFoundException("访谈会话不存在");
+    return session;
+  }
+
+  getGuidedDecision(decisionId: string): GuidedDecision {
+    const decision = this.state.guidedDecisions.find((item) => item.id === decisionId);
+    if (!decision) throw new NotFoundException("智能决策不存在");
+    return decision;
+  }
+
+  getKnowledgeRelease(releaseId: string): KnowledgeRelease {
+    const release = this.state.knowledgeReleases.find((item) => item.id === releaseId);
+    if (!release) throw new NotFoundException("知识版本不存在");
+    return release;
+  }
 
   createProject(project: Omit<Project, "id">): Project {
     const created: Project = { ...project, id: createId("project") };
@@ -235,6 +292,20 @@ export class FileBackedDataService {
     const attachment = this.getAttachment(attachmentId);
     this.state.attachments = this.state.attachments.filter((item) => item.id !== attachmentId);
     this.state.parseResults = this.state.parseResults.filter((item) => item.attachmentId !== attachmentId);
+    const emptiedClaimIds: string[] = [];
+    this.state.evidenceClaims = this.state.evidenceClaims
+      .map((claim) => ({ ...claim, attachmentIds: claim.attachmentIds.filter((id) => id !== attachmentId) }))
+      .filter((claim) => {
+        if (claim.attachmentIds.length) return true;
+        emptiedClaimIds.push(claim.id);
+        return false;
+      });
+    if (emptiedClaimIds.length) {
+      this.state.interviewSessions = this.state.interviewSessions.map((session) => ({
+        ...session,
+        evidenceClaimIds: session.evidenceClaimIds.filter((id) => !emptiedClaimIds.includes(id))
+      }));
+    }
     this.persist();
     return attachment;
   }
@@ -323,10 +394,129 @@ export class FileBackedDataService {
     return updated;
   }
 
+  createInterviewSession(session: Omit<InterviewSession, "id">): InterviewSession {
+    const created: InterviewSession = { ...session, id: createId("interview") };
+    this.state.interviewSessions.push(created);
+    this.persist();
+    return created;
+  }
+
+  updateInterviewSession(sessionId: string, updater: (current: InterviewSession) => InterviewSession): InterviewSession {
+    const index = this.state.interviewSessions.findIndex((item) => item.id === sessionId);
+    if (index < 0) throw new NotFoundException("访谈会话不存在");
+    const updated = updater(this.state.interviewSessions[index]);
+    this.state.interviewSessions[index] = updated;
+    this.persist();
+    return updated;
+  }
+
+  createAnswerRecord(answer: Omit<AnswerRecord, "id">): AnswerRecord {
+    const created: AnswerRecord = { ...answer, id: createId("answer") };
+    this.state.answerRecords.push(created);
+    this.persist();
+    return created;
+  }
+
+  supersedeAnswerRecord(answerId: string, supersededAt: string): AnswerRecord {
+    const index = this.state.answerRecords.findIndex((item) => item.id === answerId);
+    if (index < 0) throw new NotFoundException("访谈答案不存在");
+    const updated = { ...this.state.answerRecords[index], supersededAt };
+    this.state.answerRecords[index] = updated;
+    this.persist();
+    return updated;
+  }
+
+  createEvidenceClaim(claim: Omit<EvidenceClaim, "id">): EvidenceClaim {
+    const created: EvidenceClaim = { ...claim, id: createId("evidence") };
+    this.state.evidenceClaims.push(created);
+    this.persist();
+    return created;
+  }
+
+  updateEvidenceClaim(claimId: string, updater: (current: EvidenceClaim) => EvidenceClaim): EvidenceClaim {
+    const index = this.state.evidenceClaims.findIndex((item) => item.id === claimId);
+    if (index < 0) throw new NotFoundException("证据声明不存在");
+    const updated = updater(this.state.evidenceClaims[index]);
+    this.state.evidenceClaims[index] = updated;
+    this.persist();
+    return updated;
+  }
+
+  replaceStageAssessment(assessment: Omit<StageAssessment, "id">): StageAssessment {
+    const now = assessment.generatedAt;
+    this.state.stageAssessments = this.state.stageAssessments.map((item) =>
+      item.sessionId === assessment.sessionId && item.stage === assessment.stage && !item.invalidatedAt
+        ? { ...item, invalidatedAt: now }
+        : item
+    );
+    const created: StageAssessment = { ...assessment, id: createId("assessment") };
+    this.state.stageAssessments.push(created);
+    this.persist();
+    return created;
+  }
+
+  invalidateStageAssessments(sessionId: string, stages: StageAssessment["stage"][], invalidatedAt: string): void {
+    this.state.stageAssessments = this.state.stageAssessments.map((item) =>
+      item.sessionId === sessionId && stages.includes(item.stage) && !item.invalidatedAt
+        ? { ...item, invalidatedAt }
+        : item
+    );
+    this.persist();
+  }
+
+  createGuidedDecision(decision: Omit<GuidedDecision, "id">): GuidedDecision {
+    const created: GuidedDecision = { ...decision, id: createId("guided_decision") };
+    this.state.guidedDecisions.push(created);
+    this.persist();
+    return created;
+  }
+
+  updateGuidedDecision(decisionId: string, updater: (current: GuidedDecision) => GuidedDecision): GuidedDecision {
+    const index = this.state.guidedDecisions.findIndex((item) => item.id === decisionId);
+    if (index < 0) throw new NotFoundException("智能决策不存在");
+    const updated = updater(this.state.guidedDecisions[index]);
+    this.state.guidedDecisions[index] = updated;
+    this.persist();
+    return updated;
+  }
+
+  createKnowledgeRelease(release: Omit<KnowledgeRelease, "id">): KnowledgeRelease {
+    const created: KnowledgeRelease = { ...release, id: createId("knowledge") };
+    this.state.knowledgeReleases.push(created);
+    this.persist();
+    return created;
+  }
+
+  updateKnowledgeRelease(releaseId: string, updater: (current: KnowledgeRelease) => KnowledgeRelease): KnowledgeRelease {
+    const index = this.state.knowledgeReleases.findIndex((item) => item.id === releaseId);
+    if (index < 0) throw new NotFoundException("知识版本不存在");
+    const updated = updater(this.state.knowledgeReleases[index]);
+    this.state.knowledgeReleases[index] = updated;
+    this.persist();
+    return updated;
+  }
+
+  getAIProviderConfig(): StoredAIProviderConfig | undefined {
+    return this.state.aiProviderConfig ? deepClone(this.state.aiProviderConfig) : undefined;
+  }
+
+  setAIProviderConfig(config: StoredAIProviderConfig): StoredAIProviderConfig {
+    this.state.aiProviderConfig = deepClone(config);
+    this.persist();
+    return deepClone(config);
+  }
+
   addAuditLog(log: Omit<AuditLog, "id">): AuditLog {
     const created: AuditLog = { ...log, id: createId("audit") };
     this.state.auditLogs.push(created);
     this.persist();
     return created;
+  }
+
+  addAIUsageRecord(record: Omit<AIUsageRecord, "id">): AIUsageRecord {
+    const created: AIUsageRecord = { ...record, id: createId("ai_usage") };
+    this.state.aiUsageRecords.push(created);
+    this.persist();
+    return deepClone(created);
   }
 }

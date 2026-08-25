@@ -1,0 +1,4 @@
+interface:
+  display_name: "工程阶段判断"
+  short_description: "基于事实、证据与专业知识判断工程项目必要性和可行性"
+  default_prompt: "Use $assess-project-stage to assess the necessity and feasibility of this engineering project."

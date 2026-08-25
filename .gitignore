@@ -10,3 +10,5 @@ coverage
 tmp
 uploads
 runtime-data/
+.codex-logs/
+apps/web/.next-build/

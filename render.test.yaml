@@ -1,0 +1,57 @@
+services:
+  - type: web
+    name: property-review-api-test
+    runtime: node
+    plan: starter
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:api
+    healthCheckPath: /health
+    disk:
+      name: property-review-test-data
+      mountPath: /opt/render/project/src/runtime-data-test
+      sizeGB: 5
+    envVars:
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: AI_PROVIDER
+        value: auto
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL_NAME
+        sync: false
+      - key: AI_API_TIMEOUT_MS
+        value: 1800000
+      - key: AI_ALLOW_DEMO_FALLBACK
+        value: true
+      - key: PRODUCTION_FOUNDATION_READY
+        value: false
+      - key: GUIDED_FORMAL_AUTO_APPROVAL
+        value: false
+      - key: APP_TIMEZONE
+        value: Asia/Shanghai
+      - key: APP_DATA_FILE
+        value: /opt/render/project/src/runtime-data-test/app-state.json
+      - key: APP_UPLOAD_DIR
+        value: /opt/render/project/src/runtime-data-test/uploads
+      - key: ATTACHMENT_MAX_SIZE_BYTES
+        value: 524288
+      - key: NON_PHOTO_ATTACHMENTS_MAX_TOTAL_BYTES
+        value: 2097152
+      - key: PDF_FONT_PATH
+        value: /opt/render/project/src/apps/api/assets/fonts/NotoSansSC-Regular.otf
+
+  - type: web
+    name: property-review-web-test
+    runtime: node
+    plan: free
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:web
+    envVars:
+      - key: WEB_HOST
+        value: 0.0.0.0
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_DEPLOYMENT_KIND
+        value: test

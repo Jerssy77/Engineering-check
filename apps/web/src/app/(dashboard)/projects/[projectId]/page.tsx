@@ -51,6 +51,7 @@ import { use, useEffect, useMemo, useState } from "react";
 
 import { StatusTag } from "../../../../components/status-tag";
 import { apiRequest, buildApiUrl } from "../../../../lib/api";
+import { prepareFileForUpload } from "../../../../lib/image-compression";
 import {
   auditActionLabels,
   categoryLabels,
@@ -533,15 +534,18 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
 
   const uploadFiles = async (slotKey: string, event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files?.length || !currentVersion) return;
-    const formData = new FormData();
-    formData.append("projectId", routeParams.projectId);
-    formData.append("versionId", currentVersion.id);
-    formData.append("slotKey", slotKey);
-    Array.from(event.target.files).forEach((file) => formData.append("files", file));
+    const selectedFiles = Array.from(event.target.files);
     setUploadingKey(slotKey);
     try {
+      const preparedFiles = await Promise.all(selectedFiles.map((file) => prepareFileForUpload(file)));
+      const formData = new FormData();
+      formData.append("projectId", routeParams.projectId);
+      formData.append("versionId", currentVersion.id);
+      formData.append("slotKey", slotKey);
+      preparedFiles.forEach(({ file }) => formData.append("files", file, file.name));
       await apiRequest("/files/upload", { method: "POST", body: formData }, session);
-      messageApi.success(slotKey === "cost_sheet" ? "工程量清单已上传并开始解析" : "材料上传成功");
+      const compressedCount = preparedFiles.filter((item) => item.compressed).length;
+      messageApi.success(slotKey === "cost_sheet" ? "工程量清单已上传并开始解析" : compressedCount ? `${compressedCount} 张照片已自动压缩并上传` : "材料上传成功");
       await load();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "材料上传失败");

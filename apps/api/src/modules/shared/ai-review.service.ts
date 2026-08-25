@@ -1,4 +1,6 @@
-import { BadGatewayException, Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { createDecipheriv, createHash } from "node:crypto";
+
+import { BadGatewayException, Inject, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import {
   AIReviewResult,
   AdvisoryRecommendation,
@@ -24,8 +26,10 @@ import {
   selectEngineeringScenarioCards
 } from "./engineering-review-skill-pack";
 import { formatNormContext, selectNationalNormCitations } from "./national-norm-pack";
+import { postJson } from "./json-http-client";
 import { normalizeAiReview } from "./review-normalization";
 import { buildRuleBasedReview, ReviewGenerationParams } from "./rule-based-review";
+import { FileBackedDataService } from "./file-backed-data.service";
 
 type ExternalReviewPayload = Record<string, unknown>;
 
@@ -536,6 +540,8 @@ function stringifyPromptInput(params: ReviewGenerationParams, normContext: strin
 
 @Injectable()
 export class AiReviewService {
+  constructor(@Inject(FileBackedDataService) private readonly data: FileBackedDataService) {}
+
   async generateReview(params: {
     projectId: string;
     versionId: string;
@@ -551,7 +557,7 @@ export class AiReviewService {
       return normalizeAiReview(fallback) ?? fallback;
     }
 
-    const apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+    const apiKey = this.getApiKey();
     if (!apiKey) {
       throw new ServiceUnavailableException("未配置 AI_API_KEY，无法调用真实模型。");
     }
@@ -588,6 +594,8 @@ export class AiReviewService {
   }
 
   private getProvider(): string {
+    const stored = this.data.getAIProviderConfig();
+    if (stored) return stored.enabled ? stored.provider : "demo";
     const configured = (process.env.AI_PROVIDER ?? "auto").trim().toLowerCase();
     if (!configured || configured === "auto") {
       return this.hasRealModelCredentials() ? "openai" : "demo";
@@ -604,6 +612,8 @@ export class AiReviewService {
   }
 
   private getBaseUrl(): string {
+    const stored = this.data.getAIProviderConfig();
+    if (stored?.enabled && stored.provider !== "demo") return stored.baseUrl.replace(/\/$/, "");
     return (process.env.AI_API_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(
       /\/$/,
       ""
@@ -616,7 +626,21 @@ export class AiReviewService {
   }
 
   private getModelName(): string {
-    return process.env.AI_MODEL_NAME || "gpt-5.4";
+    const stored = this.data.getAIProviderConfig();
+    return stored?.decisionModel || process.env.AI_MODEL_NAME || "gpt-5.6-sol";
+  }
+
+  private getApiKey(): string | undefined {
+    const stored = this.data.getAIProviderConfig();
+    if (stored?.encryptedApiKey && stored.apiKeyIv && stored.apiKeyTag) {
+      const secret = process.env.AI_CONFIG_MASTER_KEY || process.env.APP_SESSION_SECRET;
+      if (!secret && process.env.NODE_ENV === "production") throw new ServiceUnavailableException("生产环境未配置 AI_CONFIG_MASTER_KEY");
+      const key = createHash("sha256").update(secret || "local-test-ai-config-key-change-before-production").digest();
+      const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(stored.apiKeyIv, "base64"));
+      decipher.setAuthTag(Buffer.from(stored.apiKeyTag, "base64"));
+      return Buffer.concat([decipher.update(Buffer.from(stored.encryptedApiKey, "base64")), decipher.final()]).toString("utf8");
+    }
+    return process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
   }
 
   private getTimeoutMs(): number {
@@ -633,9 +657,6 @@ export class AiReviewService {
     params: ReviewGenerationParams,
     apiKey: string
   ): Promise<{ content: string; modelName: string }> {
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), this.getTimeoutMs());
-
     const citations = selectNationalNormCitations({
       snapshot: params.snapshot,
       parseResults: params.parseResults,
@@ -649,16 +670,14 @@ export class AiReviewService {
     });
     const skillPackContext = formatSkillPackContext(scenarioCards);
 
-    try {
-      const response = await fetch(`${this.getBaseUrl()}${this.getApiPath()}`, {
-        method: "POST",
-        headers: {
+    const response = await postJson(
+        `${this.getBaseUrl()}${this.getApiPath()}`,
+        {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`
         },
-        body: JSON.stringify({
+        {
           model: this.getModelName(),
-          temperature: 0.1,
           response_format: { type: "json_object" },
           messages: [
             {
@@ -712,11 +731,11 @@ export class AiReviewService {
               ].join("\n")
             }
           ]
-        }),
-        signal: controller.signal
-      });
+        },
+        this.getTimeoutMs()
+      );
 
-      const rawText = await response.text();
+      const rawText = response.text;
       if (!response.ok) {
         throw new Error(`上游返回 ${response.status}: ${rawText}`);
       }
@@ -751,9 +770,6 @@ export class AiReviewService {
         }
       }
 
-      throw new Error("上游未返回有效的文本内容");
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
+    throw new Error("上游未返回有效的文本内容");
   }
 }
