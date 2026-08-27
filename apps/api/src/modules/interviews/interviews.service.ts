@@ -1657,10 +1657,10 @@ export class InterviewsService implements OnModuleInit {
             answer: compactAIValue(answers.get(question.id)?.value ?? "")
           })),
           evidence: this.evidenceContext(session),
-          allowedQuestionIds: questions.map((question) => question.id),
+          allowedQuestionIds: questions.filter((question) => !answerHasValue(answers.get(question.id))).map((question) => question.id),
           supplementalFacts: (session.stageSupplementFacts ?? [])
             .filter((fact) => fact.stage === stage && (!session.reviewContextStartedAt || fact.submittedAt >= session.reviewContextStartedAt))
-            .map((fact) => Object.entries(fact.values).map(([id, value]) => ({ label: fact.labels[id] ?? id, value: compactAIValue(value) as string | number })).flat())
+            .map((fact) => Object.entries(fact.values).map(([id, value]) => ({ id, label: fact.labels[id] ?? id, value: compactAIValue(value) as string | number })).flat())
             .flat(),
           blueprint: session.reviewBlueprint,
           fingerprint: session.fingerprint,
