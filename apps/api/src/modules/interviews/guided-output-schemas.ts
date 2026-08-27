@@ -23,7 +23,7 @@ const parameter = objectSchema({
   confirmationMethod: stringSchema,
   status: enumSchema("recommended", "range", "field_confirm")
 });
-const module = objectSchema({
+const schemeModule = objectSchema({
   key: enumSchema("scope", "technical_route", "materials", "process", "risk_controls", "acceptance"),
   content: stringSchema,
   basis: strings,
@@ -52,7 +52,7 @@ const schemeOption = objectSchema({
   summary: stringSchema,
   applicability: strings,
   tradeoffs,
-  modules: arraySchema(module),
+  modules: arraySchema(schemeModule),
   quantityItems: arraySchema(quantityItem)
 });
 
@@ -153,7 +153,7 @@ export const GUIDED_OUTPUT_SCHEMAS = {
     }))
   }),
   scheme: objectSchema({
-    modules: arraySchema(module),
+    modules: arraySchema(schemeModule),
     quantityItems: arraySchema(quantityItem),
     alternatives: arraySchema(schemeOption)
   }),
