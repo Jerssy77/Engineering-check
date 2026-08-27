@@ -254,9 +254,16 @@ test("AI阶段判断机制跨五类项目均为单请求并记录真实Usage", a
     assert.equal(requestBodies.length, scenarios.length, "五类项目各只发送一次请求");
     assert.ok(requestBodies.every((body) => body.reasoning_effort === "medium"));
     assert.ok(requestBodies.every((body) => body.max_completion_tokens === 2400));
+    assert.ok(requestBodies.every((body) => {
+      const messages = body.messages as Array<{ role: string; content: string }>;
+      return messages[0].role === "system"
+        && messages[0].content.includes("# 安全边界")
+        && messages[0].content.includes("# 本次调用任务与输出契约");
+    }), "任务、输出契约和安全边界必须位于 system 消息");
     const submittedCategories = requestBodies.map((body) => {
       const messages = body.messages as Array<{ content: string }>;
       const payload = JSON.parse(messages[1].content) as { input: { category: ProjectCategory } };
+      assert.deepEqual(Object.keys(payload), ["input"], "user 消息只能包含不受信任的业务输入");
       return payload.input.category;
     });
     assert.deepEqual(submittedCategories, scenarios.map((scenario) => scenario.category));

@@ -281,10 +281,11 @@ export class InterviewsService implements OnModuleInit {
     this.ensureSubmitter(user);
     const session = this.ensureSession(this.getAccessibleAggregate(projectId, user), user);
     if (session.status !== "stage_supplement" || !session.stageSupplement) throw new BadRequestException("当前没有需要暂存的阶段补充信息");
+    const values = this.normalizeStageSupplementValues(session.stageSupplement, dto.values, false);
     const savedAt = new Date().toISOString();
     this.data.updateInterviewSession(session.id, (item) => ({
       ...item,
-      stageSupplement: item.stageSupplement ? { ...item.stageSupplement, draftValues: dto.values } : undefined,
+      stageSupplement: item.stageSupplement ? { ...item.stageSupplement, draftValues: values } : undefined,
       updatedAt: savedAt
     }));
     return { saved: true, savedAt };
@@ -295,8 +296,7 @@ export class InterviewsService implements OnModuleInit {
     const session = this.ensureSession(this.getAccessibleAggregate(projectId, user), user);
     const supplement = session.stageSupplement;
     if (session.status !== "stage_supplement" || !supplement) throw new BadRequestException("当前没有需要提交的阶段补充信息");
-    const missingRequired = supplement.fields.filter((field) => field.required && !String(dto.values[field.id] ?? "").trim());
-    if (missingRequired.length) throw new BadRequestException(`请补充：${missingRequired.map((field) => field.label).join("、")}`);
+    const values = this.normalizeStageSupplementValues(supplement, dto.values, true);
     const now = new Date().toISOString();
     this.data.invalidateStageAssessments(session.id, [supplement.stage, "scheme", "cost", "decision"], now);
     this.data.updateInterviewSession(session.id, (item) => ({
@@ -304,7 +304,7 @@ export class InterviewsService implements OnModuleInit {
       stageSupplementFacts: [...(item.stageSupplementFacts ?? []), {
         stage: supplement.stage,
         assessmentId: item.assessmentIds[item.assessmentIds.length - 1] ?? "",
-        values: dto.values,
+        values,
         labels: Object.fromEntries(supplement.fields.map((field) => [field.id, field.label])),
         submittedAt: now
       }],
@@ -1184,6 +1184,36 @@ export class InterviewsService implements OnModuleInit {
     if ((session.guidedVersion ?? 1) === 2 && session.fingerprint && session.reviewBlueprint && generated) {
       const routes = this.routesFromScheme(session, generated.options);
       schemeReview = this.validateGeneratedScheme(generated, 1);
+      if (schemeReview.passed) {
+        try {
+          const independentReview = await this.guidedAiSkillService.reviewScheme({
+            fingerprint: session.fingerprint,
+            blueprint: session.reviewBlueprint,
+            routes,
+            modules: generated.modules.map((module) => ({ key: module.key, content: module.content })),
+            quantityItems: generated.costRows,
+            revision: 1
+          });
+          if (!independentReview) throw new Error("独立方案复核服务未启用");
+          schemeReview = independentReview;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "独立方案复核失败";
+          schemeReview = {
+            passed: false,
+            revision: 1,
+            defects: [{ code: "independent_review_unavailable", message, severity: "blocking" }],
+            summary: "独立方案复核未完成，自动流程已停止",
+            modelName: "independent-review-unavailable",
+            promptVersion: "scheme-review-required-v1",
+            reviewedAt: new Date().toISOString()
+          };
+          this.data.updateInterviewSession(sessionId, (item) => ({
+            ...item,
+            aiFailureReason: message,
+            updatedAt: new Date().toISOString()
+          }));
+        }
+      }
       session = this.data.updateInterviewSession(sessionId, (item) => ({ ...item, technicalRoutes: routes, schemeReview, updatedAt: new Date().toISOString() }));
       if (schemeReview && !schemeReview.passed) {
         const factsMissing = schemeReview.defects.some((defect) => ["critical_parameter_deferred", "unsupported_assumption", "interface_gap"].includes(defect.code));
@@ -1224,7 +1254,24 @@ export class InterviewsService implements OnModuleInit {
     for (const stage of ["necessity", "feasibility"] as const) {
       const current = this.data.listStageAssessments(sessionId).find((item) => item.stage === stage && !item.invalidatedAt);
       const baseQuestions = release.questions.filter((question) => ["necessity.problem_summary", "necessity.project_location"].includes(question.id));
-      const assessment = current ?? await this.assessStage(sessionId, stage, answers, baseQuestions, []);
+      let assessment: StageAssessment;
+      try {
+        assessment = current ?? await this.assessStage(sessionId, stage, answers, baseQuestions, []);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "AI 专业判断暂不可用";
+        this.data.updateInterviewSession(sessionId, (item) => ({
+          ...item,
+          stage,
+          status: "manual_review",
+          tendency: "needs_information",
+          tendencyReasons: ["AI 专业判断暂不可用，已停止自动流转并转人工复核"],
+          aiFailureReason: reason,
+          nextQuestionId: undefined,
+          stageSupplement: undefined,
+          updatedAt: new Date().toISOString()
+        }));
+        return false;
+      }
       if (assessment.scopeCalibration) {
         this.pauseForScopeCalibration(sessionId, assessment);
         return false;
@@ -1281,6 +1328,44 @@ export class InterviewsService implements OnModuleInit {
     const answers = this.activeAnswerMap(session.id);
     const release = this.data.getKnowledgeRelease(session.knowledgeReleaseId);
     return this.applicableQuestions(release, session.category, answers).find((question) => question.required && !answerHasValue(answers.get(question.id)))?.id;
+  }
+
+  private normalizeStageSupplementValues(
+    supplement: NonNullable<InterviewSession["stageSupplement"]>,
+    input: Record<string, string | number>,
+    requireAll: boolean
+  ): Record<string, string | number> {
+    const fields = new Map(supplement.fields.map((field) => [field.id, field]));
+    const unknownKeys = Object.keys(input).filter((key) => !fields.has(key));
+    if (unknownKeys.length) {
+      throw new BadRequestException("补充信息包含未发布字段，请刷新页面后重试");
+    }
+
+    const normalized: Record<string, string | number> = {};
+    for (const field of supplement.fields) {
+      const raw = input[field.id];
+      if (raw === undefined || String(raw).trim() === "") {
+        if (requireAll && field.required) throw new BadRequestException(`请补充：${field.label}`);
+        continue;
+      }
+
+      if (field.inputType === "number") {
+        const value = Number(raw);
+        if (!Number.isFinite(value)) throw new BadRequestException(`${field.label}必须填写有效数字`);
+        normalized[field.id] = value;
+        continue;
+      }
+
+      if (typeof raw !== "string") throw new BadRequestException(`${field.label}必须填写文本`);
+      const value = raw.trim();
+      const maxLength = field.inputType === "textarea" ? 5000 : 1000;
+      if (value.length > maxLength) throw new BadRequestException(`${field.label}内容过长，请压缩后再提交`);
+      if (field.inputType === "select" && !field.options?.some((option) => option.value === value)) {
+        throw new BadRequestException(`${field.label}必须选择已发布选项`);
+      }
+      normalized[field.id] = value;
+    }
+    return normalized;
   }
 
   private buildStageSupplement(
@@ -1586,12 +1671,16 @@ export class InterviewsService implements OnModuleInit {
           this.data.updateInterviewSession(sessionId, (item) => ({ ...item, aiFailureReason: undefined, updatedAt: new Date().toISOString() }));
           return this.createSkillAssessment(sessionId, stage, output);
         }
+        if ((session.guidedVersion ?? 1) === 2) {
+          throw new Error("V2 智能审核未启用可用的 AI 专业判断服务");
+        }
       } catch (error) {
         this.data.updateInterviewSession(sessionId, (item) => ({
           ...item,
           aiFailureReason: error instanceof Error ? error.message : "阶段 Skill 调用失败，已使用受控兜底判断",
           updatedAt: new Date().toISOString()
         }));
+        if ((session.guidedVersion ?? 1) === 2) throw error;
       }
     }
     return this.assessStageFallback(sessionId, stage, answers, missing);
@@ -1627,33 +1716,14 @@ export class InterviewsService implements OnModuleInit {
   }
 
   private createSkillAssessment(sessionId: string, stage: InterviewStage, output: StageSkillOutput): StageAssessment {
-    const session = this.data.getInterviewSession(sessionId);
-    const principleUpgrade = ["necessity", "feasibility"].includes(stage)
-      && ["quality_upgrade", "lifecycle_renewal"].includes(session.fingerprint?.intent ?? "")
-      && this.evidenceContext(session).length > 0
-      && output.tendency === "needs_information";
-    const normalizedOutput = principleUpgrade ? {
-      ...output,
-      tendency: "leaning_approved" as const,
-      summary: stage === "necessity"
-        ? `原则必要性成立：${session.fingerprint?.businessObjective || "项目目标明确"}`
-        : "具备进入方案设计的基本条件；尚未闭合的实测参数已转为实施前条件。",
-      reasons: [...new Set([`项目动机为${session.fingerprint?.intent === "quality_upgrade" ? "品质与形象提升" : "生命周期更新"}`, ...output.reasons])].slice(0, 3),
-      implementationConditions: [...new Set([...output.implementationConditions, ...output.missingFacts])].slice(0, 8),
-      missingFacts: [],
-      supplementFields: [],
-      followUpQuestionIds: [],
-      dataCollectionRecommended: false,
-      scopeCalibration: session.fingerprint?.scopeStrategy === "condition_based" ? output.scopeCalibration : undefined
-    } : output;
     return this.createAssessment(
       sessionId,
       stage,
-      normalizedOutput.tendency,
-      normalizedOutput.summary,
-      normalizedOutput.reasons,
-      normalizedOutput.missingFacts,
-      { modelName: normalizedOutput.modelName, promptVersion: normalizedOutput.promptVersion, followUpQuestionIds: normalizedOutput.followUpQuestionIds, supplementFields: normalizedOutput.supplementFields, propositionResults: normalizedOutput.propositionResults, dataCollectionRecommended: normalizedOutput.dataCollectionRecommended, scopeCalibration: normalizedOutput.scopeCalibration, implementationConditions: normalizedOutput.implementationConditions }
+      output.tendency,
+      output.summary,
+      output.reasons,
+      output.missingFacts,
+      { modelName: output.modelName, promptVersion: output.promptVersion, followUpQuestionIds: output.followUpQuestionIds, supplementFields: output.supplementFields, propositionResults: output.propositionResults, dataCollectionRecommended: output.dataCollectionRecommended, scopeCalibration: output.scopeCalibration, implementationConditions: output.implementationConditions }
     );
   }
 
