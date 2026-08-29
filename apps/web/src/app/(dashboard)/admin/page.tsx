@@ -54,7 +54,8 @@ export default function AdminPage() {
   const [aiConfig, setAIConfig] = useState<AIProviderConfigView | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [savingAI, setSavingAI] = useState(false);
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const canResetQuota = session?.user.role === "reviewer";
 
   const load = async () => {
@@ -121,9 +122,8 @@ export default function AdminPage() {
     finally { setSavingAI(false); }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
+  useEffect(() => { if (sessionReady) void load(); }, [sessionReady]);
 
   const resetCityQuota = async (organizationId: string, organizationName: string) => {
     if (!session || !canResetQuota) {
@@ -165,10 +165,12 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page admin-workspace">
       {contextHolder}
-      <Card className="glass-card" styles={{ body: { padding: 28 } }}>
-        <Typography.Title level={2} style={{ margin: 0 }}>{"投资与审批"}</Typography.Title>
+      <Card className="glass-card workspace-intro" styles={{ body: { padding: 28 } }}>
+        <span className="workspace-code">CONTROL / INVESTMENT</span>
+        <Typography.Title level={2}>{"投资与审批总览"}</Typography.Title>
+        <Typography.Paragraph>把项目金额、审查进度、额度消耗与模型运行放在同一张控制面上，优先处理等待人工确认和存在重复风险的项目。</Typography.Paragraph>
       </Card>
 
       {session?.user.role === "admin" && aiConfig ? (

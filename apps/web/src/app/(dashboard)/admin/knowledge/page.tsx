@@ -20,7 +20,8 @@ function normalizeRelease(release: KnowledgeRelease): KnowledgeRelease {
 
 export default function KnowledgeWorkbenchPage() {
   const router = useRouter();
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const [releases, setReleases] = useState<KnowledgeRelease[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
@@ -45,7 +46,8 @@ export default function KnowledgeWorkbenchPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
+  useEffect(() => { if (sessionReady) void load(); }, [sessionReady]);
   const selected = useMemo(() => releases.find((item) => item.id === selectedId), [releases, selectedId]);
   const selectRelease = (release: KnowledgeRelease) => { setSelectedId(release.id); setDraft(structuredClone(normalizeRelease(release))); };
 
@@ -134,12 +136,12 @@ export default function KnowledgeWorkbenchPage() {
   const editable = draft.status === "draft";
 
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page knowledge-workspace">
       {contextHolder}
-      <Card className="glass-card">
+      <Card className="glass-card workspace-intro">
         <Space direction="vertical" size={14} style={{ width: "100%" }}>
           <Link href="/admin"><Button type="text" icon={<ArrowLeftOutlined />}>返回管理看板</Button></Link>
-          <div className="panel-heading"><div><span className="hero-kicker">知识治理</span><Typography.Title level={2}>智能访谈知识工作台</Typography.Title><Typography.Paragraph type="secondary">维护受控题库、方案模块和发布版本。人工改判只作为优化建议，不会自动修改这里的内容。</Typography.Paragraph></div><Button type="primary" icon={<CopyOutlined />} loading={saving} onClick={() => void createDraft()}>从发布版创建草稿</Button></div>
+          <div className="panel-heading"><div><span className="workspace-code">KNOWLEDGE / GOVERNANCE</span><Typography.Title level={2}>访谈知识工作台</Typography.Title><Typography.Paragraph>维护受控题库、方案模块和发布版本。人工改判只形成优化建议，不会自动改变正在使用的审查基线。</Typography.Paragraph></div><Button type="primary" icon={<CopyOutlined />} loading={saving} onClick={() => void createDraft()}>从发布版创建草稿</Button></div>
         </Space>
       </Card>
 
@@ -153,7 +155,7 @@ export default function KnowledgeWorkbenchPage() {
             <Space direction="vertical" size={14} style={{ width: "100%" }}>
               <Input value={draft.name} disabled={!editable} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
               <Input.TextArea rows={3} value={draft.changeNote} disabled={!editable} placeholder="本次变更说明" onChange={(event) => setDraft({ ...draft, changeNote: event.target.value })} />
-              <Descriptions size="small" column={2} items={[{ key: "category", label: "适用类别", children: draft.categories.map((item) => labelFromMap(categoryLabels, item)).join("、") }, { key: "created", label: "创建时间", children: formatDateTime(draft.createdAt) }]} />
+              <Descriptions size="small" column={{ xs: 1, sm: 2 }} items={[{ key: "category", label: "适用类别", children: draft.categories.map((item) => labelFromMap(categoryLabels, item)).join("、") }, { key: "created", label: "创建时间", children: formatDateTime(draft.createdAt) }]} />
               <Space wrap>{editable ? <Button onClick={() => void save()} loading={saving}>保存草稿</Button> : null}<Button icon={<HistoryOutlined />} onClick={() => void replay()}>历史回放</Button>{editable ? <Popconfirm title="确认发布该知识版本？" description="现有会话继续锁定原知识版本，新会话使用本版本。" onConfirm={() => void publish()}><Button type="primary" icon={<RocketOutlined />}>发布</Button></Popconfirm> : null}{!editable ? <Popconfirm title="确认回滚？" description="系统会复制该历史内容并作为一个新的知识版本发布。" onConfirm={() => void rollback()}><Button icon={<RollbackOutlined />}>回滚到此版本</Button></Popconfirm> : null}</Space>
             </Space>
           </Card>
@@ -193,7 +195,7 @@ export default function KnowledgeWorkbenchPage() {
       </Drawer>
 
       <Modal width={900} title="历史回放结果" open={Boolean(replayResult)} onCancel={() => setReplayResult(null)} footer={<Button onClick={() => setReplayResult(null)}>关闭</Button>}>
-        {replayResult ? <Space direction="vertical" size={16} style={{ width: "100%" }}><Descriptions column={2} items={Object.entries(replayResult).filter(([key]) => !["warnings", "caseResults"].includes(key)).map(([key, value]) => ({ key, label: key, children: String(value) }))} />{Array.isArray(replayResult.warnings) && replayResult.warnings.length ? <Alert type="warning" message={(replayResult.warnings as string[]).join("；")} /> : <Alert type="success" message="结构校验和分支可达性检查通过" />}<Table size="small" rowKey="projectId" pagination={{ pageSize: 6 }} dataSource={(replayResult.caseResults as Array<Record<string, unknown>>) ?? []} columns={[{ title: "项目", dataIndex: "projectName" }, { title: "类别", dataIndex: "category", render: (value) => labelFromMap(categoryLabels, value) }, { title: "历史批准", dataIndex: "approvedHistoricalCase", render: (value) => value ? <Tag color="green">是</Tag> : <Tag>否</Tag> }, { title: "核心事实缺口", dataIndex: "missingCoreFacts", render: (value: string[]) => value.length ? value.join("、") : <Tag color="green">可回放</Tag> }]} /></Space> : null}
+        {replayResult ? <Space direction="vertical" size={16} style={{ width: "100%" }}><Descriptions column={{ xs: 1, sm: 2 }} items={Object.entries(replayResult).filter(([key]) => !["warnings", "caseResults"].includes(key)).map(([key, value]) => ({ key, label: key, children: String(value) }))} />{Array.isArray(replayResult.warnings) && replayResult.warnings.length ? <Alert type="warning" message={(replayResult.warnings as string[]).join("；")} /> : <Alert type="success" message="结构校验和分支可达性检查通过" />}<Table size="small" rowKey="projectId" pagination={{ pageSize: 6 }} dataSource={(replayResult.caseResults as Array<Record<string, unknown>>) ?? []} columns={[{ title: "项目", dataIndex: "projectName" }, { title: "类别", dataIndex: "category", render: (value) => labelFromMap(categoryLabels, value) }, { title: "历史批准", dataIndex: "approvedHistoricalCase", render: (value) => value ? <Tag color="green">是</Tag> : <Tag>否</Tag> }, { title: "核心事实缺口", dataIndex: "missingCoreFacts", render: (value: string[]) => value.length ? value.join("、") : <Tag color="green">可回放</Tag> }]} /></Space> : null}
       </Modal>
     </div>
   );

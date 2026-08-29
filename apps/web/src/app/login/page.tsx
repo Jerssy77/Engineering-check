@@ -1,6 +1,6 @@
 "use client";
 
-import { LockOutlined, UserOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
 import { AuthResponse } from "@property-review/shared";
 import { Button, Form, Input, Space, Typography, message } from "antd";
 import { useRouter } from "next/navigation";
@@ -70,23 +70,27 @@ export default function LoginPage() {
       <div className="auth-grid">
         <section className="auth-hero">
           <div className="auth-hero-copy">
-            <span className="auth-badge">工程立项审批平台</span>
+            <span className="auth-badge"><b>ER / 01</b> 工程立项审查平台</span>
             <Typography.Title className="auth-title">
-              问清事实，形成方案，明确决策。
+              先把工程问清楚，<br />再把结论做扎实。
             </Typography.Title>
-            <Typography.Paragraph className="auth-lead">工程项目从申报到审批的单线工作台。</Typography.Paragraph>
+            <Typography.Paragraph className="auth-lead">面向工程申报人与审查人的单线工作台：围绕事实、证据和边界完成访谈，形成可以被确认、被追溯、被执行的审查结论。</Typography.Paragraph>
           </div>
-          <div className="auth-feature-line">
-            <span>智能访谈</span><span>唯一方案</span><span>明确结论</span>
+          <div className="auth-review-route" aria-label="审查流程">
+            <div><span>01</span><strong>描述事项</strong><small>说清问题与目标</small></div>
+            <div><span>02</span><strong>核对证据</strong><small>确认范围与依据</small></div>
+            <div><span>03</span><strong>形成结论</strong><small>输出方案与条件</small></div>
           </div>
+          <div className="auth-datum">DATUM 0.00 · FACT / EVIDENCE / DECISION</div>
         </section>
 
         <section className="auth-panel">
           <div className="auth-panel-top">
-            <span className="eyebrow-label">账号登录</span>
-            <Typography.Title level={3} style={{ margin: "14px 0 8px" }}>
+            <span className="eyebrow-label">ACCOUNT ACCESS</span>
+            <Typography.Title level={2}>
               进入工作台
             </Typography.Title>
+            <Typography.Paragraph>使用内部账号继续当前项目，所有问答和审批动作都会保存留痕。</Typography.Paragraph>
           </div>
 
           <Form form={form} layout="vertical" onFinish={submit} className="auth-form">
@@ -106,11 +110,11 @@ export default function LoginPage() {
               <Input.Password prefix={<LockOutlined />} placeholder="请输入密码" size="large" />
             </Form.Item>
 
-            <Button type="primary" htmlType="submit" size="large" block loading={submitting} style={{ height: 50 }}>
-              进入工作台
+            <Button type="primary" htmlType="submit" size="large" block loading={submitting} icon={<ArrowRightOutlined />} iconPosition="end">
+              登录并查看项目
             </Button>
           </Form>
-
+          <div className="auth-access-note"><span>访问说明</span><p>申报人负责填报与修订；审查人负责确认结论；管理员维护知识与模型配置。</p></div>
         </section>
       </div>
     </div>

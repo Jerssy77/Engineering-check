@@ -323,7 +323,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
   const [liveSnapshot, setLiveSnapshot] = useState<Partial<FormSnapshot>>({});
   const [currentStep, setCurrentStep] = useState(0);
   const [form] = Form.useForm<FormSnapshot>();
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const watchedProjectName = Form.useWatch("projectName", form);
   const watchedProjectCategory = Form.useWatch("projectCategory", form) as ProjectCategory | undefined;
@@ -360,9 +361,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
     }
   };
 
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
   useEffect(() => {
-    void load();
-  }, [routeParams.projectId]);
+    if (sessionReady) void load();
+  }, [routeParams.projectId, sessionReady]);
 
   useEffect(() => {
     if (detail?.project.status !== "ai_reviewing") {
@@ -1234,7 +1236,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
   };
 
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page project-form-workspace">
       {contextHolder}
       <section className="glass-card brand-frame page-hero">
         <div className="page-hero-grid">

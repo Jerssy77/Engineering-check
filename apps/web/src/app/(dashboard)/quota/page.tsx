@@ -56,16 +56,16 @@ export default function QuotaPage() {
   }, []);
 
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page quota-workspace">
       {contextHolder}
-      <Card className="glass-card" styles={{ body: { padding: 28 } }}>
-        <span className="hero-kicker">{"额度中心"}</span>
-        <Typography.Title level={2} style={{ marginTop: 14, marginBottom: 0 }}>
-          {"AI 用量控制"}
+      <Card className="glass-card workspace-intro" styles={{ body: { padding: 28 } }}>
+        <span className="workspace-code">QUOTA / WEEKLY WINDOW</span>
+        <Typography.Title level={2}>
+          {"AI 送审额度"}
         </Typography.Title>
-        <Typography.Paragraph style={{ color: "#56636a", marginTop: 10 }}>
+        <Typography.Paragraph>
           {
-            "只有“提交 AI 预审”会消耗额度，草稿保存、查看结论或历史版本都不会占用额度。"
+            "额度只在发起一次完整 AI 预审时扣减；保存草稿、补充问答、查看结论和历史版本均不消耗额度。"
           }
         </Typography.Paragraph>
       </Card>

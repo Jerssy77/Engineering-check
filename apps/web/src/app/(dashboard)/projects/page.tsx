@@ -62,7 +62,8 @@ export default function ProjectsPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ProjectFilter>("all");
   const [form] = Form.useForm<CreateProjectForm>();
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const isSubmitter = session?.user.role === "submitter";
 
   const load = async () => {
@@ -82,7 +83,8 @@ export default function ProjectsPage() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
+  useEffect(() => { if (sessionReady) void load(); }, [sessionReady]);
 
   const create = async (values: CreateProjectForm) => {
     setSaving(true);

@@ -105,7 +105,8 @@ export default function BillOfQuantitiesPage({
   const [messageApi, contextHolder] = message.useMessage();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<BoqResponse | null>(null);
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const load = async () => {
     if (!session) {
@@ -128,9 +129,10 @@ export default function BillOfQuantitiesPage({
     }
   };
 
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
   useEffect(() => {
-    void load();
-  }, [routeParams.projectId, routeParams.versionId]);
+    if (sessionReady) void load();
+  }, [routeParams.projectId, routeParams.versionId, sessionReady]);
 
   const downloadAsset = async (path: string, fileName: string) => {
     try {
@@ -194,7 +196,7 @@ export default function BillOfQuantitiesPage({
   ];
 
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page document-workspace boq-workspace">
       {contextHolder}
 
       <section className="glass-card brand-frame document-cover">
