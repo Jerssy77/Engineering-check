@@ -2345,6 +2345,29 @@ body::before {
   letter-spacing: 0.08em;
 }
 
+.platform-sider .ant-menu-item:not(.ant-menu-item-selected),
+.platform-sider .ant-menu-item:not(.ant-menu-item-selected) .ant-menu-title-content,
+.platform-sider .ant-menu-item:not(.ant-menu-item-selected) .ant-menu-title-content a,
+.platform-sider .ant-menu-item:not(.ant-menu-item-selected) .ant-menu-title-content a > span {
+  color: rgba(234, 242, 240, 0.84) !important;
+}
+
+.platform-sider .ant-menu-item:not(.ant-menu-item-selected) .ant-menu-title-content small {
+  color: rgba(234, 242, 240, 0.6) !important;
+}
+
+.platform-sider .ant-menu-item:not(.ant-menu-item-selected):hover,
+.platform-sider .ant-menu-item:not(.ant-menu-item-selected):hover .ant-menu-title-content a,
+.platform-sider .ant-menu-item:not(.ant-menu-item-selected):hover .ant-menu-title-content a > span {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.platform-sider .ant-menu-item-selected .ant-menu-title-content a,
+.platform-sider .ant-menu-item-selected .ant-menu-title-content a > span {
+  color: #ffffff !important;
+}
+
 .platform-sider .ant-menu-item-selected {
   color: #fff !important;
   background: rgba(255, 255, 255, 0.1) !important;
