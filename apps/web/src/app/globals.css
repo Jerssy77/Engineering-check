@@ -1969,6 +1969,102 @@ select,
   line-height: 1.45 !important;
 }
 
+.admin-workspace {
+  scroll-behavior: smooth;
+}
+
+.admin-workspace .workspace-intro .ant-card-head {
+  position: absolute;
+  z-index: 2;
+  inset: 20px 24px auto auto;
+  min-height: 40px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.admin-workspace .workspace-intro .ant-card-head-wrapper {
+  min-height: 40px;
+}
+
+.admin-metric-card {
+  height: 100%;
+  border-top: 3px solid rgba(30, 90, 136, 0.55) !important;
+}
+
+.admin-metric-card .ant-card-body {
+  display: grid;
+  gap: 6px;
+  min-height: 112px;
+  align-content: center;
+}
+
+.admin-metric-card .ant-typography-secondary {
+  font-size: 13px;
+}
+
+.admin-metric-card h3.ant-typography {
+  color: var(--ink) !important;
+  font-size: clamp(1.35rem, 2vw, 1.75rem) !important;
+  line-height: 1.25 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-system-stack {
+  display: grid;
+  gap: 14px;
+  scroll-margin-top: 92px;
+}
+
+.admin-system-collapse {
+  overflow: hidden;
+  border: 1px solid var(--line) !important;
+  border-radius: 6px 6px 18px 6px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 14px 36px rgba(18, 48, 74, 0.06);
+}
+
+.admin-system-collapse > .ant-collapse-item {
+  border-bottom: 0 !important;
+}
+
+.admin-system-collapse .ant-collapse-header {
+  min-height: 58px;
+  align-items: center !important;
+  padding: 9px 18px !important;
+}
+
+.admin-system-collapse .ant-collapse-header-text {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.admin-system-collapse .ant-collapse-content {
+  border-top: 1px solid var(--line) !important;
+  background: transparent !important;
+}
+
+.admin-system-collapse .ant-collapse-content-box {
+  padding: 20px 22px 24px !important;
+}
+
+.admin-workspace .ant-table-cell {
+  vertical-align: middle;
+}
+
+.admin-workspace .ant-table-cell .ant-typography,
+.admin-workspace .ant-table-cell .ant-tag {
+  white-space: nowrap;
+}
+
+.admin-workspace .organization-grid .ant-list-item {
+  min-height: 70px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 5px 5px 14px 5px;
+  background: #f5f8f7;
+}
+
 .projects-overview .project-blueprint-hero {
   min-height: 320px;
   padding-block: 40px;
@@ -2040,6 +2136,39 @@ select,
   .project-form-workspace .hero-title,
   .document-workspace .hero-title {
     font-size: 1.9rem !important;
+  }
+
+  .admin-workspace .workspace-intro .ant-card-head {
+    inset: 14px 16px auto auto;
+  }
+
+  .admin-workspace .workspace-intro .ant-card-body {
+    padding-top: 66px !important;
+  }
+
+  .admin-metric-grid {
+    row-gap: 12px !important;
+  }
+
+  .admin-metric-card .ant-card-body {
+    min-height: 104px;
+    padding: 16px !important;
+  }
+
+  .admin-metric-card h3.ant-typography {
+    font-size: 1.22rem !important;
+  }
+
+  .admin-system-collapse .ant-collapse-header {
+    padding-inline: 14px !important;
+  }
+
+  .admin-system-collapse .ant-collapse-extra .ant-btn:first-child {
+    display: none;
+  }
+
+  .admin-system-collapse .ant-collapse-content-box {
+    padding: 16px !important;
   }
 }
 
@@ -2694,9 +2823,23 @@ body::before {
 
 .knowledge-workspace .panel-heading {
   display: grid;
-  grid-template-columns: 1fr;
-  justify-items: start;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: end;
+  width: 100%;
+}
+
+.knowledge-workspace,
+.knowledge-workspace .split-layout,
+.knowledge-workspace .split-layout > *,
+.knowledge-workspace .ant-space,
+.knowledge-workspace .ant-space-item {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.knowledge-workspace .workspace-intro .ant-space,
+.knowledge-workspace .workspace-intro .ant-space-item {
   width: 100%;
 }
 
@@ -2707,6 +2850,14 @@ body::before {
 
 .knowledge-workspace .panel-heading > .ant-btn {
   flex: none;
+}
+
+.knowledge-workspace .workspace-intro .ant-card-body {
+  padding-block: 24px !important;
+}
+
+.knowledge-workspace .workspace-intro .ant-space-item:first-child .ant-btn {
+  padding-inline: 0;
 }
 
 /* Structured form */
@@ -3117,8 +3268,9 @@ body::before {
   }
 
   .knowledge-workspace .panel-heading {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    align-items: start;
   }
 
   .interview-workspace .interview-status-strip {
