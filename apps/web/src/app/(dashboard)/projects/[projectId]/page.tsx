@@ -1241,13 +1241,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
       <section className="glass-card brand-frame page-hero">
         <div className="page-hero-grid">
           <Space direction="vertical" size={14} style={{ maxWidth: 760 }}>
-            <span className="hero-kicker">结构化填写与送审</span>
+            <span className="hero-kicker">PROJECT APPLICATION</span>
             <Typography.Title className="hero-title">
               {watchedProjectName || detail?.project.title || "立项填写工作面"}
             </Typography.Title>
-            <Typography.Paragraph className="document-lead">
-              把长表单拆成五个步骤：先定项目基线，再写问题、方案、预算和附件。阅读更轻，填写也更不容易丢步骤。
-            </Typography.Paragraph>
           </Space>
 
           <div className="metric-grid">
@@ -1284,11 +1281,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
             <Space direction="vertical" size={18} style={{ width: "100%" }}>
               <div>
                 <Typography.Title level={4} className="section-title">
-                  分步填写向导
+                  项目填报
                 </Typography.Title>
-                <Typography.Paragraph className="section-copy" style={{ marginTop: 8, marginBottom: 0 }}>
-                  每一步只保留当前阶段最需要的字段，切换步骤时会自动保存草稿。
-                </Typography.Paragraph>
               </div>
               <Tabs
                 className="form-tabs"

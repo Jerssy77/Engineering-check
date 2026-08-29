@@ -32,15 +32,15 @@ export function AppShell({ children }: PropsWithChildren) {
   }, [pathname]);
 
   const pageMeta = useMemo(() => {
-    if (pathname.startsWith("/admin/knowledge")) return { code: "KN-04", title: "知识工作台", copy: "维护审查依据与专业判断基线" };
-    if (pathname.startsWith("/admin")) return { code: "MG-03", title: "管理看板", copy: "统筹投资、额度与模型运行" };
-    if (pathname.startsWith("/quota")) return { code: "QT-02", title: "额度与策略", copy: "查看送审资格与例外授权" };
-    if (pathname.includes("/interview")) return { code: "QA-01", title: "填报访谈", copy: "通过问答确认工程事实与审查边界" };
-    if (pathname.includes("/report/")) return { code: "RP-05", title: "最终审核报告", copy: "汇总结论、依据与执行条件" };
-    if (pathname.includes("/feasibility/")) return { code: "FS-05", title: "可行性报告", copy: "形成可归档的立项判断" };
-    if (pathname.includes("/bill-of-quantities/")) return { code: "BQ-05", title: "工程量清单", copy: "核对工程量、单价与预算边界" };
-    if (/\/projects\/[^/]+/.test(pathname)) return { code: "FM-01", title: "结构化填报", copy: "补齐表单、附件与送审材料" };
-    return { code: "PL-00", title: "项目审查台账", copy: "从申报事项推进到可执行结论" };
+    if (pathname.startsWith("/admin/knowledge")) return { code: "KN-04", title: "知识工作台" };
+    if (pathname.startsWith("/admin")) return { code: "MG-03", title: "管理看板" };
+    if (pathname.startsWith("/quota")) return { code: "QT-02", title: "额度与策略" };
+    if (pathname.includes("/interview")) return { code: "QA-01", title: "填报访谈" };
+    if (pathname.includes("/report/")) return { code: "RP-05", title: "最终审核报告" };
+    if (pathname.includes("/feasibility/")) return { code: "FS-05", title: "可行性报告" };
+    if (pathname.includes("/bill-of-quantities/")) return { code: "BQ-05", title: "工程量清单" };
+    if (/\/projects\/[^/]+/.test(pathname)) return { code: "FM-01", title: "结构化填报" };
+    return { code: "PL-00", title: "项目审查台账" };
   }, [pathname]);
 
   const menuItems = [
@@ -74,7 +74,6 @@ export function AppShell({ children }: PropsWithChildren) {
               <span>{pageMeta.code}</span>
               <div>
                 <strong>{pageMeta.title}</strong>
-                <small>{pageMeta.copy}</small>
               </div>
             </div>
             <div className="platform-header-actions">

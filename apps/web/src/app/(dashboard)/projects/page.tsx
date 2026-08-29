@@ -163,10 +163,10 @@ export default function ProjectsPage() {
   ];
 
   const railItems = [
-    { label: "在册项目", value: stats.total, note: "本账户可见" },
-    { label: "填报访谈", value: stats.interviewing, note: "正在澄清事实" },
-    { label: "人工确认", value: stats.pending, note: "等待审查动作" },
-    { label: isSubmitter ? "本周可送审" : "已批准", value: isSubmitter ? `${quota?.remaining ?? 0}/${quota?.policy.weeklyQuotaPerCity ?? 3}` : stats.approved, note: isSubmitter ? "剩余额度" : "结论已形成" }
+    { label: "在册项目", value: stats.total },
+    { label: "填报访谈", value: stats.interviewing },
+    { label: "人工确认", value: stats.pending },
+    { label: isSubmitter ? "本周可送审" : "已批准", value: isSubmitter ? `${quota?.remaining ?? 0}/${quota?.policy.weeklyQuotaPerCity ?? 3}` : stats.approved }
   ];
 
   return (
@@ -174,15 +174,12 @@ export default function ProjectsPage() {
       {contextHolder}
       <section className="project-blueprint-hero">
         <div className="project-blueprint-copy">
-          <span className="project-blueprint-kicker"><span>PROJECT CONTROL</span> 工程立项审查台</span>
-          <Typography.Title className="project-blueprint-title">把一句工程诉求，<br />推进成可执行结论。</Typography.Title>
-          <Typography.Paragraph className="project-blueprint-lead">
-            在同一条审查路径上确认事实、形成方案、闭合预算，并留下可追溯的审批依据。
-          </Typography.Paragraph>
+          <span className="project-blueprint-kicker"><span>PROJECT CONTROL</span> 工程审查</span>
+          <Typography.Title className="project-blueprint-title">工程项目<br />审查台账</Typography.Title>
           {isSubmitter ? (
             <Button className="project-create-button" type="primary" size="large" icon={<PlusOutlined />} onClick={() => setOpen(true)}>发起新项目</Button>
           ) : (
-            <span className="project-review-note">当前为审查视角 · 优先处理等待确认的项目</span>
+            <span className="project-review-note">审查视角</span>
           )}
         </div>
         <div className="project-review-rail" aria-label="项目审查路径">
@@ -193,7 +190,6 @@ export default function ProjectsPage() {
                 <span className="project-review-coordinate">R{index + 1}</span>
                 <strong>{item.value}</strong>
                 <span>{item.label}</span>
-                <small>{item.note}</small>
               </div>
             ))}
           </div>
@@ -205,7 +201,6 @@ export default function ProjectsPage() {
           <div>
             <span className="project-ledger-eyebrow">PROJECT LEDGER · {String(filteredProjects.length).padStart(2, "0")}</span>
             <Typography.Title level={3}>项目审查台账</Typography.Title>
-            <Typography.Paragraph>按项目名称、所属组织或工程位置检索，直接进入当前处理环节。</Typography.Paragraph>
           </div>
           <div className="project-ledger-controls">
             <Input allowClear prefix={<SearchOutlined />} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索项目、组织或位置" aria-label="搜索项目" />

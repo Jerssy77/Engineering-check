@@ -605,7 +605,7 @@ export default function InterviewPage() {
           <Space direction="vertical" align="center" size={16} style={{ width: "100%", paddingBlock: 30 }}>
             <Spin size="large" indicator={<SyncOutlined spin />} />
             <Typography.Title level={3} style={{ margin: 0 }}>正在形成最终结论</Typography.Title>
-            <Typography.Paragraph type="secondary" style={{ textAlign: "center", maxWidth: 560 }}>正在核对事实、证据、方案和预算，结论会在这里直接出现。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary" style={{ textAlign: "center", maxWidth: 560 }}>事实、证据、方案与预算复核中</Typography.Paragraph>
           </Space>
         </Card>
       ) : view.decision ? (

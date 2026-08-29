@@ -436,9 +436,6 @@ export default function ReportPage({
           <Typography.Title className="hero-title" style={{ marginBottom: 0 }}>
             {report?.project.title ?? "工程立项最终审核报告"}
           </Typography.Title>
-          <Typography.Paragraph className="document-lead">
-            先呈现人工最终结论、审核意见和预算摘要，再展开 AI 判断依据、规范要求、风险与原始附件。
-          </Typography.Paragraph>
         </Space>
       </section>
 
@@ -838,9 +835,6 @@ export default function ReportPage({
                   <Typography.Title level={4} className="section-title">
                     一次性特批
                   </Typography.Title>
-                  <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                    用于额度或冷却期被拦截，但项目确需紧急推进的场景。
-                  </Typography.Paragraph>
                   <Input.TextArea
                     rows={3}
                     value={overrideReason}

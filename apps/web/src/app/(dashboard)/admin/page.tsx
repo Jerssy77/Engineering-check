@@ -170,12 +170,11 @@ export default function AdminPage() {
       <Card className="glass-card workspace-intro" styles={{ body: { padding: 28 } }}>
         <span className="workspace-code">CONTROL / INVESTMENT</span>
         <Typography.Title level={2}>{"投资与审批总览"}</Typography.Title>
-        <Typography.Paragraph>把项目金额、审查进度、额度消耗与模型运行放在同一张控制面上，优先处理等待人工确认和存在重复风险的项目。</Typography.Paragraph>
       </Card>
 
       {session?.user.role === "admin" && aiConfig ? (
         <Card className="glass-card" title="AI 模型配置" extra={<Space><Button loading={savingAI} onClick={() => void testAIConfig()}>测试连接</Button><Button type="primary" loading={savingAI} onClick={() => void saveAIConfig()}>保存</Button></Space>}>
-          <Alert type="info" showIcon message="正常项目调用：事项识别、审查蓝图、必要性、可行性和一次技术方案。最终结论与方案结构校验不再重复调用模型。" style={{ marginBottom: 18 }} />
+          <Alert type="info" showIcon message="模型链路：事项识别 → 审查蓝图 → 必要性 → 可行性 → 技术方案" style={{ marginBottom: 18 }} />
           <Row gutter={[14, 14]}>
             <Col xs={24} md={6}><Typography.Text>启用外部模型</Typography.Text><div style={{ marginTop: 9 }}><Switch checked={aiConfig.enabled} onChange={(enabled) => setAIConfig({ ...aiConfig, enabled })} /></div></Col>
             <Col xs={24} md={6}><Typography.Text>服务类型</Typography.Text><Select style={{ width: "100%", marginTop: 6 }} value={aiConfig.provider} onChange={(provider) => setAIConfig({ ...aiConfig, provider })} options={[{ value: "demo", label: "演示规则引擎" }, { value: "openai_compatible", label: "OpenAI 兼容 API" }]} /></Col>

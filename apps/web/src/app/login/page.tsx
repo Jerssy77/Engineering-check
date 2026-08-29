@@ -72,14 +72,13 @@ export default function LoginPage() {
           <div className="auth-hero-copy">
             <span className="auth-badge"><b>ER / 01</b> 工程立项审查平台</span>
             <Typography.Title className="auth-title">
-              先把工程问清楚，<br />再把结论做扎实。
+              工程立项<br />审查平台
             </Typography.Title>
-            <Typography.Paragraph className="auth-lead">面向工程申报人与审查人的单线工作台：围绕事实、证据和边界完成访谈，形成可以被确认、被追溯、被执行的审查结论。</Typography.Paragraph>
           </div>
           <div className="auth-review-route" aria-label="审查流程">
-            <div><span>01</span><strong>描述事项</strong><small>说清问题与目标</small></div>
-            <div><span>02</span><strong>核对证据</strong><small>确认范围与依据</small></div>
-            <div><span>03</span><strong>形成结论</strong><small>输出方案与条件</small></div>
+            <div><span>01</span><strong>项目申报</strong></div>
+            <div><span>02</span><strong>专业审查</strong></div>
+            <div><span>03</span><strong>结论归档</strong></div>
           </div>
           <div className="auth-datum">DATUM 0.00 · FACT / EVIDENCE / DECISION</div>
         </section>
@@ -88,9 +87,8 @@ export default function LoginPage() {
           <div className="auth-panel-top">
             <span className="eyebrow-label">ACCOUNT ACCESS</span>
             <Typography.Title level={2}>
-              进入工作台
+              账号登录
             </Typography.Title>
-            <Typography.Paragraph>使用内部账号继续当前项目，所有问答和审批动作都会保存留痕。</Typography.Paragraph>
           </div>
 
           <Form form={form} layout="vertical" onFinish={submit} className="auth-form">
@@ -111,10 +109,9 @@ export default function LoginPage() {
             </Form.Item>
 
             <Button type="primary" htmlType="submit" size="large" block loading={submitting} icon={<ArrowRightOutlined />} iconPosition="end">
-              登录并查看项目
+              登录
             </Button>
           </Form>
-          <div className="auth-access-note"><span>访问说明</span><p>申报人负责填报与修订；审查人负责确认结论；管理员维护知识与模型配置。</p></div>
         </section>
       </div>
     </div>

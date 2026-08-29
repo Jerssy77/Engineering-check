@@ -141,7 +141,7 @@ export default function KnowledgeWorkbenchPage() {
       <Card className="glass-card workspace-intro">
         <Space direction="vertical" size={14} style={{ width: "100%" }}>
           <Link href="/admin"><Button type="text" icon={<ArrowLeftOutlined />}>返回管理看板</Button></Link>
-          <div className="panel-heading"><div><span className="workspace-code">KNOWLEDGE / GOVERNANCE</span><Typography.Title level={2}>访谈知识工作台</Typography.Title><Typography.Paragraph>维护受控题库、方案模块和发布版本。人工改判只形成优化建议，不会自动改变正在使用的审查基线。</Typography.Paragraph></div><Button type="primary" icon={<CopyOutlined />} loading={saving} onClick={() => void createDraft()}>从发布版创建草稿</Button></div>
+          <div className="panel-heading"><div><span className="workspace-code">KNOWLEDGE / GOVERNANCE</span><Typography.Title level={2}>访谈知识工作台</Typography.Title></div><Button type="primary" icon={<CopyOutlined />} loading={saving} onClick={() => void createDraft()}>从发布版创建草稿</Button></div>
         </Space>
       </Card>
 

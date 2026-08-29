@@ -232,9 +232,6 @@ export default function FeasibilityPage({
           <Typography.Title className="hero-title" style={{ marginBottom: 0 }}>
             {report?.project.title ?? "工程立项可行性报告"}
           </Typography.Title>
-          <Typography.Paragraph className="document-lead">
-            面向内部立项汇报和审批留档，按项目概况、建设必要性、实施条件、技术方案、投资估算、风险控制和结论建议组织。
-          </Typography.Paragraph>
         </Space>
       </section>
 
@@ -471,14 +468,6 @@ export default function FeasibilityPage({
               </Space>
             </section>
 
-            <section className="section-surface">
-              <Typography.Title level={4} className="section-title">
-                报告定位
-              </Typography.Title>
-              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                本报告用于内部审批留档和立项汇报；现场执行时请结合施工方案、工程量清单和审批意见组织实施。
-              </Typography.Paragraph>
-            </section>
           </Space>
         </div>
       ) : null}

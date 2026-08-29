@@ -2,6 +2,7 @@ import { AntdRegistry } from "@ant-design/nextjs-registry";
 import "@ant-design/v5-patch-for-react-19";
 import type { Metadata } from "next";
 
+import { DesignProvider } from "../components/design-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN">
       <body>
-        <AntdRegistry>{children}</AntdRegistry>
+        <AntdRegistry><DesignProvider>{children}</DesignProvider></AntdRegistry>
       </body>
     </html>
   );

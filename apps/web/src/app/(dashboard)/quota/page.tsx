@@ -63,11 +63,6 @@ export default function QuotaPage() {
         <Typography.Title level={2}>
           {"AI 送审额度"}
         </Typography.Title>
-        <Typography.Paragraph>
-          {
-            "额度只在发起一次完整 AI 预审时扣减；保存草稿、补充问答、查看结论和历史版本均不消耗额度。"
-          }
-        </Typography.Paragraph>
       </Card>
 
       <Row gutter={[20, 20]}>

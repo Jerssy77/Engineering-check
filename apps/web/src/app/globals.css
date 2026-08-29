@@ -1821,6 +1821,228 @@ a {
   }
 }
 
+/* Professional review platform — final type and control calibration */
+:root {
+  --font-sans: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+}
+
+body,
+button,
+input,
+textarea,
+select,
+.ant-app,
+.ant-typography,
+.ant-btn,
+.ant-input,
+.ant-input-number,
+.ant-picker,
+.ant-select,
+.ant-table,
+.ant-form,
+.ant-card,
+.ant-modal,
+.ant-drawer {
+  font-family: var(--font-sans) !important;
+}
+
+.auth-title,
+.hero-title,
+.project-blueprint-title,
+.project-ledger-heading h3,
+.workspace-intro h2,
+.project-form-workspace .hero-title,
+.document-workspace .hero-title,
+.project-form-workspace .section-title,
+.document-workspace .section-title,
+.interview-workspace .question-card h2,
+.interview-workspace .decision-hero h2 {
+  font-family: var(--font-sans) !important;
+  font-weight: 700 !important;
+}
+
+.project-review-node strong,
+.project-budget,
+.project-version,
+.project-updated,
+.metric-card strong,
+.workspace-stat strong,
+.project-ledger-count {
+  font-family: var(--font-sans) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.platform-header-context > div {
+  gap: 0;
+}
+
+.platform-header-context strong {
+  font-size: 16px;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+.workspace-page .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg) {
+  height: 40px;
+  min-height: 40px;
+  padding-inline: 16px;
+  font-size: 14px;
+}
+
+.platform-shell .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg) {
+  height: 40px !important;
+  min-height: 40px !important;
+}
+
+.workspace-page .ant-btn-sm {
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 12px;
+  font-size: 13px;
+}
+
+.workspace-page .ant-btn-lg,
+.auth-form .ant-btn-lg {
+  height: 48px;
+  min-height: 48px;
+  font-size: 15px;
+}
+
+.auth-form .ant-input-affix-wrapper,
+.auth-form .ant-btn-lg {
+  height: 48px !important;
+  min-height: 48px !important;
+}
+
+.workspace-page input.ant-input,
+.workspace-page .ant-input-affix-wrapper,
+.workspace-page .ant-input-number,
+.workspace-page .ant-picker,
+.workspace-page .ant-select-single,
+.project-ledger-controls .ant-input-affix-wrapper,
+.project-ledger-controls .ant-select-single {
+  height: 40px;
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.workspace-page .ant-input-affix-wrapper,
+.project-ledger-controls .ant-input-affix-wrapper {
+  padding-block: 0;
+}
+
+.workspace-page .ant-input-affix-wrapper .ant-input,
+.project-ledger-controls .ant-input-affix-wrapper .ant-input {
+  height: auto;
+  min-height: 0;
+}
+
+.workspace-page .ant-input-number-input {
+  height: 38px;
+}
+
+.workspace-page .ant-select-single .ant-select-selector,
+.project-ledger-controls .ant-select-single .ant-select-selector {
+  height: 40px !important;
+  min-height: 40px !important;
+  align-items: center;
+}
+
+.workspace-page textarea.ant-input {
+  min-height: 96px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.workspace-page .ant-form-item-label > label {
+  height: auto;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.workspace-page .ant-card-head-title,
+.workspace-page .section-title {
+  font-size: 16px !important;
+  line-height: 1.45 !important;
+}
+
+.projects-overview .project-blueprint-hero {
+  min-height: 320px;
+  padding-block: 40px;
+}
+
+.projects-overview .project-blueprint-title {
+  max-width: 680px;
+  margin-block: 16px 28px !important;
+  font-size: clamp(2.5rem, 4vw, 3.2rem) !important;
+  line-height: 1.16 !important;
+  letter-spacing: -0.035em;
+}
+
+.projects-overview .project-review-rail {
+  min-height: 232px;
+}
+
+.project-ledger-heading h3 {
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+.workspace-intro .ant-card-body {
+  padding: 28px 34px !important;
+}
+
+.workspace-intro h2 {
+  margin-bottom: 0 !important;
+  font-size: clamp(2rem, 3.4vw, 2.5rem) !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.03em;
+}
+
+.project-form-workspace .page-hero,
+.document-workspace .document-cover {
+  padding-block: 34px;
+}
+
+.project-form-workspace .hero-title,
+.document-workspace .hero-title {
+  margin-bottom: 0 !important;
+  font-size: clamp(2rem, 3.6vw, 2.75rem) !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.03em;
+}
+
+.projects-overview .project-ledger-table .ant-table-thead > tr > th,
+.projects-overview .project-ledger-table .ant-table-tbody > tr > td {
+  padding: 14px 16px !important;
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .projects-overview .project-blueprint-hero {
+    min-height: auto;
+    padding-block: 28px;
+  }
+
+  .projects-overview .project-blueprint-title {
+    margin-block: 14px 24px !important;
+    font-size: 2.2rem !important;
+  }
+
+  .workspace-intro .ant-card-body {
+    padding: 24px 22px !important;
+  }
+
+  .workspace-intro h2,
+  .project-form-workspace .hero-title,
+  .document-workspace .hero-title {
+    font-size: 1.9rem !important;
+  }
+}
+
 /* Engineering review system — shared visual language */
 :root {
   --bg: #e9efed;

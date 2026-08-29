@@ -206,11 +206,6 @@ export default function BillOfQuantitiesPage({
             <Typography.Title className="hero-title">
               {report?.project.title ?? "工程量清单"}
             </Typography.Title>
-            <Typography.Paragraph style={{ color: "var(--ink-soft)", marginBottom: 0, maxWidth: 760 }}>
-              {report?.sourceMode === "upload"
-                ? "当前版本采用上传 Excel 清单作为正式工程量清单，页面展示解析摘要、分组汇总和关键明细，Excel 下载将返回用户原始文件。"
-                : "以工程项与其他费用两类清晰展开当前版本的预算矩阵，支持直接预览、导出 PDF 和导出 Excel，方便后续执行与采买衔接。"}
-            </Typography.Paragraph>
           </Space>
 
           <div className="summary-grid">
