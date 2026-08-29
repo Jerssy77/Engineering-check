@@ -40,7 +40,8 @@ AI_PROVIDER="auto"
 AI_API_BASE_URL="https://api.openai.com/v1"
 AI_API_PATH="/chat/completions"
 AI_API_KEY=""
-AI_MODEL_NAME="gpt-4.1-mini"
+AI_MODEL_NAME="gpt-5.6-terra"
+AI_STRUCTURED_OUTPUTS_MODE="auto"
 AI_API_TIMEOUT_MS="1800000"
 AI_ALLOW_DEMO_FALLBACK="false"
 ```
@@ -56,6 +57,7 @@ AI_ALLOW_DEMO_FALLBACK="false"
 
 - 当前接入方式采用 OpenAI 兼容接口协议。
 - 默认调用路径是 `/chat/completions`。
+- `AI_STRUCTURED_OUTPUTS_MODE="auto"` 会在 OpenAI 官方端点启用严格 JSON Schema，在其他兼容网关保留 JSON mode；确认网关支持后可设为 `strict`，不支持时可显式设为 `json_object`。
 - 如果你用的是兼容 OpenAI 协议的模型网关，也可以直接替换 `AI_API_BASE_URL` 和 `AI_MODEL_NAME`。
 - 如果开启 `AI_ALLOW_DEMO_FALLBACK="true"`，当真实模型调用失败时会自动回退到 demo 审核，并在报告里写明已回退。
 

@@ -271,7 +271,8 @@ export default function ReportPage({
   const [overrideSubmitting, setOverrideSubmitting] = useState(false);
   const [downloadingFinalPdf, setDownloadingFinalPdf] = useState(false);
   const [downloadingConstructionPlan, setDownloadingConstructionPlan] = useState(false);
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const canReview = session?.user.role !== "submitter";
 
   const citationLabelMap = useMemo(() => {
@@ -310,9 +311,10 @@ export default function ReportPage({
     }
   };
 
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
   useEffect(() => {
-    void load();
-  }, [routeParams.projectId, routeParams.versionId]);
+    if (sessionReady) void load();
+  }, [routeParams.projectId, routeParams.versionId, sessionReady]);
 
   useEffect(() => {
     if (report?.version.status !== "ai_reviewing") {
@@ -422,7 +424,7 @@ export default function ReportPage({
     ["ai_recommended_pass", "ai_conditionally_passed"].includes(report?.version.status ?? "");
 
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page document-workspace report-workspace">
       {contextHolder}
 
       <section className="glass-card brand-frame document-cover">
@@ -434,9 +436,6 @@ export default function ReportPage({
           <Typography.Title className="hero-title" style={{ marginBottom: 0 }}>
             {report?.project.title ?? "工程立项最终审核报告"}
           </Typography.Title>
-          <Typography.Paragraph className="document-lead">
-            先呈现人工最终结论、审核意见和预算摘要，再展开 AI 判断依据、规范要求、风险与原始附件。
-          </Typography.Paragraph>
         </Space>
       </section>
 
@@ -460,7 +459,7 @@ export default function ReportPage({
                     : `${withFallback(report.finalDecision.comment)}`
                 }
               />
-              <Descriptions column={2} bordered>
+              <Descriptions column={{ xs: 1, sm: 2 }} bordered>
                 <Descriptions.Item label="审核人">
                   {withFallback(report.finalDecision.reviewerName)}
                 </Descriptions.Item>
@@ -475,7 +474,7 @@ export default function ReportPage({
             </SectionCard>
 
             <SectionCard title="预算与版本摘要">
-              <Descriptions column={2} bordered>
+              <Descriptions column={{ xs: 1, sm: 2 }} bordered>
                 <Descriptions.Item label="申报组织">{report.project.organizationName}</Descriptions.Item>
                 <Descriptions.Item label="项目分类">{report.summary.categoryLabel}</Descriptions.Item>
                 <Descriptions.Item label="实施位置">{report.summary.locationSummary}</Descriptions.Item>
@@ -502,7 +501,7 @@ export default function ReportPage({
                 message={`AI 结论：${report.aiSummary.verdictLabel}`}
                 description={withFallback(report.aiSummary.conclusion)}
               />
-              <Descriptions column={2} bordered>
+              <Descriptions column={{ xs: 1, sm: 2 }} bordered>
                 <Descriptions.Item label="AI 评分">
                   {report.aiSummary.overallScore ?? EMPTY_TEXT}
                 </Descriptions.Item>
@@ -836,9 +835,6 @@ export default function ReportPage({
                   <Typography.Title level={4} className="section-title">
                     一次性特批
                   </Typography.Title>
-                  <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                    用于额度或冷却期被拦截，但项目确需紧急推进的场景。
-                  </Typography.Paragraph>
                   <Input.TextArea
                     rows={3}
                     value={overrideReason}

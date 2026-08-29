@@ -156,7 +156,8 @@ export default function FeasibilityPage({
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadingConstructionPlan, setDownloadingConstructionPlan] = useState(false);
   const [report, setReport] = useState<FeasibilityResponse | null>(null);
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const citationLabelMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -187,9 +188,10 @@ export default function FeasibilityPage({
     }
   };
 
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
   useEffect(() => {
-    void load();
-  }, [routeParams.projectId, routeParams.versionId]);
+    if (sessionReady) void load();
+  }, [routeParams.projectId, routeParams.versionId, sessionReady]);
 
   const triggerBlobDownload = (blob: Blob, fileName: string) => {
     const url = window.URL.createObjectURL(blob);
@@ -221,7 +223,7 @@ export default function FeasibilityPage({
   };
 
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page document-workspace feasibility-workspace">
       {contextHolder}
 
       <section className="glass-card brand-frame document-cover">
@@ -230,9 +232,6 @@ export default function FeasibilityPage({
           <Typography.Title className="hero-title" style={{ marginBottom: 0 }}>
             {report?.project.title ?? "工程立项可行性报告"}
           </Typography.Title>
-          <Typography.Paragraph className="document-lead">
-            面向内部立项汇报和审批留档，按项目概况、建设必要性、实施条件、技术方案、投资估算、风险控制和结论建议组织。
-          </Typography.Paragraph>
         </Space>
       </section>
 
@@ -246,7 +245,7 @@ export default function FeasibilityPage({
         <div className="split-layout">
           <Space direction="vertical" size={18} style={{ width: "100%" }}>
             <SectionCard title="一、项目概况">
-              <Descriptions column={2} bordered>
+              <Descriptions column={{ xs: 1, sm: 2 }} bordered>
                 <Descriptions.Item label="项目名称">{withFallback(report.overview.projectName)}</Descriptions.Item>
                 <Descriptions.Item label="申报组织">{withFallback(report.project.organizationName)}</Descriptions.Item>
                 <Descriptions.Item label="项目分类">{withFallback(report.project.categoryLabel)}</Descriptions.Item>
@@ -349,7 +348,7 @@ export default function FeasibilityPage({
             </SectionCard>
 
             <SectionCard title="七、投资估算">
-              <Descriptions column={2} bordered>
+              <Descriptions column={{ xs: 1, sm: 2 }} bordered>
                 <Descriptions.Item label="工程项小计">
                   {formatCurrency(report.budgetSummary.engineeringSubtotal)}
                 </Descriptions.Item>
@@ -469,14 +468,6 @@ export default function FeasibilityPage({
               </Space>
             </section>
 
-            <section className="section-surface">
-              <Typography.Title level={4} className="section-title">
-                报告定位
-              </Typography.Title>
-              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                本报告用于内部审批留档和立项汇报；现场执行时请结合施工方案、工程量清单和审批意见组织实施。
-              </Typography.Paragraph>
-            </section>
           </Space>
         </div>
       ) : null}

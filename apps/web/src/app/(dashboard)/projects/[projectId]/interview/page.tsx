@@ -219,7 +219,8 @@ function FactFormEditor({ question, initialValue, onSaved, projectId, session }:
 export default function InterviewPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const router = useRouter();
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const [view, setView] = useState<InterviewView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -258,7 +259,8 @@ export default function InterviewPage() {
     }
   };
 
-  useEffect(() => { void load(); }, [projectId]);
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
+  useEffect(() => { if (sessionReady) void load(); }, [projectId, sessionReady]);
 
   useEffect(() => {
     if (view?.session.fingerprint) setFingerprintDraft({ discipline: view.session.fingerprint.discipline, system: view.session.fingerprint.system, object: view.session.fingerprint.object, problemMode: view.session.fingerprint.problemMode, proposedAction: view.session.fingerprint.proposedAction, impactScope: view.session.fingerprint.impactScope, intent: view.session.fingerprint.intent ?? "corrective_repair", businessObjective: view.session.fingerprint.businessObjective ?? view.session.fingerprint.problemMode, scopeStrategy: view.session.fingerprint.scopeStrategy ?? "condition_based" });
@@ -582,7 +584,7 @@ export default function InterviewPage() {
   const canEditCosts = Boolean(canEditDraft && ["cost_confirmation", "ready_to_submit"].includes(view.session.status));
 
   return (
-    <div className="interview-page">
+    <div className="interview-page workspace-page interview-workspace">
       {contextHolder}
       <div className="interview-topbar">
         <Space>
@@ -603,7 +605,7 @@ export default function InterviewPage() {
           <Space direction="vertical" align="center" size={16} style={{ width: "100%", paddingBlock: 30 }}>
             <Spin size="large" indicator={<SyncOutlined spin />} />
             <Typography.Title level={3} style={{ margin: 0 }}>正在形成最终结论</Typography.Title>
-            <Typography.Paragraph type="secondary" style={{ textAlign: "center", maxWidth: 560 }}>正在核对事实、证据、方案和预算，结论会在这里直接出现。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary" style={{ textAlign: "center", maxWidth: 560 }}>事实、证据、方案与预算复核中</Typography.Paragraph>
           </Space>
         </Card>
       ) : view.decision ? (

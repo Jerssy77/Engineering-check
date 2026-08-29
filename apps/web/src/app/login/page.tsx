@@ -1,6 +1,6 @@
 "use client";
 
-import { LockOutlined, UserOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
 import { AuthResponse } from "@property-review/shared";
 import { Button, Form, Input, Space, Typography, message } from "antd";
 import { useRouter } from "next/navigation";
@@ -70,22 +70,24 @@ export default function LoginPage() {
       <div className="auth-grid">
         <section className="auth-hero">
           <div className="auth-hero-copy">
-            <span className="auth-badge">工程立项审批平台</span>
+            <span className="auth-badge"><b>ER / 01</b> 工程立项审查平台</span>
             <Typography.Title className="auth-title">
-              问清事实，形成方案，明确决策。
+              工程立项<br />审查平台
             </Typography.Title>
-            <Typography.Paragraph className="auth-lead">工程项目从申报到审批的单线工作台。</Typography.Paragraph>
           </div>
-          <div className="auth-feature-line">
-            <span>智能访谈</span><span>唯一方案</span><span>明确结论</span>
+          <div className="auth-review-route" aria-label="审查流程">
+            <div><span>01</span><strong>项目申报</strong></div>
+            <div><span>02</span><strong>专业审查</strong></div>
+            <div><span>03</span><strong>结论归档</strong></div>
           </div>
+          <div className="auth-datum">DATUM 0.00 · FACT / EVIDENCE / DECISION</div>
         </section>
 
         <section className="auth-panel">
           <div className="auth-panel-top">
-            <span className="eyebrow-label">账号登录</span>
-            <Typography.Title level={3} style={{ margin: "14px 0 8px" }}>
-              进入工作台
+            <span className="eyebrow-label">ACCOUNT ACCESS</span>
+            <Typography.Title level={2}>
+              账号登录
             </Typography.Title>
           </div>
 
@@ -106,11 +108,10 @@ export default function LoginPage() {
               <Input.Password prefix={<LockOutlined />} placeholder="请输入密码" size="large" />
             </Form.Item>
 
-            <Button type="primary" htmlType="submit" size="large" block loading={submitting} style={{ height: 50 }}>
-              进入工作台
+            <Button type="primary" htmlType="submit" size="large" block loading={submitting} icon={<ArrowRightOutlined />} iconPosition="end">
+              登录
             </Button>
           </Form>
-
         </section>
       </div>
     </div>

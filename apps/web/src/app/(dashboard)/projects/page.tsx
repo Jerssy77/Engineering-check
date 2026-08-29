@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowRightOutlined, PlusOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { ProjectExperience, ProjectStatus } from "@property-review/shared";
-import { Button, Drawer, Form, Select, Space, Table, Tag, Typography, message } from "antd";
+import { Button, Drawer, Form, Input, Select, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,7 +12,6 @@ import { StatusTag } from "../../../components/status-tag";
 import { apiRequest } from "../../../lib/api";
 import { categoryLabels, formatCurrency, formatDateTime, labelFromMap } from "../../../lib/presentation";
 import { getSession } from "../../../lib/session";
-import { Input } from "antd";
 
 interface ProjectRow {
   id: string;
@@ -43,6 +42,15 @@ type CreateProjectForm = {
   projectCategory: "mep_upgrade" | "civil_upgrade";
 };
 
+type ProjectFilter = "all" | "drafting" | "reviewing" | "approved";
+
+const projectFilterOptions: Array<{ value: ProjectFilter; label: string }> = [
+  { value: "all", label: "全部状态" },
+  { value: "drafting", label: "填报与访谈" },
+  { value: "reviewing", label: "等待确认" },
+  { value: "approved", label: "已批准" }
+];
+
 export default function ProjectsPage() {
   const router = useRouter();
   const [messageApi, contextHolder] = message.useMessage();
@@ -51,8 +59,11 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ProjectFilter>("all");
   const [form] = Form.useForm<CreateProjectForm>();
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const isSubmitter = session?.user.role === "submitter";
 
   const load = async () => {
@@ -72,7 +83,8 @@ export default function ProjectsPage() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
+  useEffect(() => { if (sessionReady) void load(); }, [sessionReady]);
 
   const create = async (values: CreateProjectForm) => {
     setSaving(true);
@@ -99,60 +111,117 @@ export default function ProjectsPage() {
     approved: projects.filter((item) => item.status === "human_approved").length
   }), [projects]);
 
+  const filteredProjects = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return projects.filter((project) => {
+      const matchesKeyword = !keyword || [project.title, project.organizationName, project.locationSummary]
+        .some((value) => value?.toLowerCase().includes(keyword));
+      const matchesFilter = filter === "all"
+        || (filter === "drafting" && project.status === "draft")
+        || (filter === "reviewing" && ["ai_reviewing", "ai_recommended_pass", "ai_conditionally_passed"].includes(project.status))
+        || (filter === "approved" && project.status === "human_approved");
+      return matchesKeyword && matchesFilter;
+    });
+  }, [filter, projects, query]);
+
   const columns: ColumnsType<ProjectRow> = [
     {
       title: "项目",
       dataIndex: "title",
-      render: (_, record) => (
-        <Space direction="vertical" size={2}>
-          <Link href={record.experience === "guided_interview" ? `/projects/${record.id}/interview` : `/projects/${record.id}`}>
-            <Typography.Text strong>{record.title}</Typography.Text>
-          </Link>
-          <Typography.Text type="secondary">{record.organizationName}</Typography.Text>
-        </Space>
+      width: 300,
+      render: (_, record, index) => (
+        <div className="project-ledger-title">
+          <span className="project-ledger-index">{String(index + 1).padStart(2, "0")}</span>
+          <div>
+            <div className="project-ledger-meta">
+              <span>{labelFromMap(categoryLabels, record.category)}</span>
+              <span>{record.organizationName}</span>
+            </div>
+            <Link href={record.experience === "guided_interview" ? `/projects/${record.id}/interview` : `/projects/${record.id}`}>
+              <Typography.Text strong>{record.title}</Typography.Text>
+            </Link>
+          </div>
+        </div>
       )
     },
-    { title: "类别", dataIndex: "category", render: (value) => <Tag>{labelFromMap(categoryLabels, value)}</Tag> },
-    { title: "流程", dataIndex: "experience", render: (value) => value === "guided_interview" ? <Tag color="blue">智能访谈</Tag> : <Tag>历史表单</Tag> },
-    { title: "状态", dataIndex: "status", render: (value) => <StatusTag status={value} /> },
-    { title: "位置", dataIndex: "locationSummary", render: (value) => value || "访谈中确认" },
-    { title: "预算", dataIndex: "budgetAmount", render: (value) => value > 0 ? formatCurrency(value) : "待形成" },
-    { title: "版本", dataIndex: "currentVersionNumber", render: (value) => `V${value}` },
-    { title: "更新时间", dataIndex: "updatedAt", render: formatDateTime },
+    { title: "审查方式", dataIndex: "experience", width: 112, render: (value) => value === "guided_interview" ? <Tag className="project-flow-tag is-guided">智能访谈</Tag> : <Tag className="project-flow-tag">历史表单</Tag> },
+    { title: "当前状态", dataIndex: "status", width: 120, render: (value) => <StatusTag status={value} /> },
+    { title: "工程位置", dataIndex: "locationSummary", width: 250, render: (value) => <span className="project-location">{value || "访谈中确认"}</span> },
+    { title: "申报预算", dataIndex: "budgetAmount", width: 124, align: "right", render: (value) => <span className="project-budget">{value > 0 ? formatCurrency(value) : "待形成"}</span> },
+    { title: "版本", dataIndex: "currentVersionNumber", width: 68, align: "center", render: (value) => <span className="project-version">V{value}</span> },
+    { title: "最后更新", dataIndex: "updatedAt", width: 132, render: (value) => <span className="project-updated">{formatDateTime(value)}</span> },
     {
       title: "",
-      render: (_, record) => <Link href={record.experience === "guided_interview" ? `/projects/${record.id}/interview` : `/projects/${record.id}`}><ArrowRightOutlined /></Link>
+      width: 120,
+      fixed: "right",
+      render: (_, record) => (
+        <Link className="project-row-action" href={record.experience === "guided_interview" ? `/projects/${record.id}/interview` : `/projects/${record.id}`}>
+          {record.experience === "guided_interview" && record.status === "draft" ? "继续访谈" : "查看项目"}<ArrowRightOutlined />
+        </Link>
+      )
     }
   ];
 
+  const railItems = [
+    { label: "在册项目", value: stats.total },
+    { label: "填报访谈", value: stats.interviewing },
+    { label: "人工确认", value: stats.pending },
+    { label: isSubmitter ? "本周可送审" : "已批准", value: isSubmitter ? `${quota?.remaining ?? 0}/${quota?.policy.weeklyQuotaPerCity ?? 3}` : stats.approved }
+  ];
+
   return (
-    <div className="section-grid">
+    <div className="projects-overview">
       {contextHolder}
-      <section className="glass-card brand-frame page-hero">
-        <div className="page-hero-grid">
-          <Space direction="vertical" size={14}>
-            <span className="hero-kicker">工程立项决策</span>
-            <Typography.Title className="hero-title">工程立项</Typography.Title>
-            {isSubmitter ? <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建立项</Button> : null}
-          </Space>
-          <div className="metric-grid">
-            <div className="metric-card"><span>全部项目</span><strong>{stats.total}</strong></div>
-            <div className="metric-card"><span>访谈填写中</span><strong>{stats.interviewing}</strong></div>
-            <div className="metric-card"><span>待人工确认</span><strong>{stats.pending}</strong></div>
-            <div className="metric-card"><span>{isSubmitter ? "本周送审余额" : "已批准"}</span><strong>{isSubmitter ? `${quota?.remaining ?? 0}/${quota?.policy.weeklyQuotaPerCity ?? 3}` : stats.approved}</strong></div>
+      <section className="project-blueprint-hero">
+        <div className="project-blueprint-copy">
+          <span className="project-blueprint-kicker"><span>PROJECT CONTROL</span> 工程审查</span>
+          <Typography.Title className="project-blueprint-title">工程项目<br />审查台账</Typography.Title>
+          {isSubmitter ? (
+            <Button className="project-create-button" type="primary" size="large" icon={<PlusOutlined />} onClick={() => setOpen(true)}>发起新项目</Button>
+          ) : (
+            <span className="project-review-note">审查视角</span>
+          )}
+        </div>
+        <div className="project-review-rail" aria-label="项目审查路径">
+          <div className="project-review-rail-label">审查路径 / REVIEW ROUTE</div>
+          <div className="project-review-nodes">
+            {railItems.map((item, index) => (
+              <div className="project-review-node" key={item.label}>
+                <span className="project-review-coordinate">R{index + 1}</span>
+                <strong>{item.value}</strong>
+                <span>{item.label}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="section-surface document-table">
-        <div className="panel-heading">
-          <Typography.Title level={4} className="section-title">项目清单</Typography.Title>
-          <Button onClick={() => void load()}>刷新</Button>
+      <section className="project-ledger">
+        <div className="project-ledger-heading">
+          <div>
+            <span className="project-ledger-eyebrow">PROJECT LEDGER · {String(filteredProjects.length).padStart(2, "0")}</span>
+            <Typography.Title level={3}>项目审查台账</Typography.Title>
+          </div>
+          <div className="project-ledger-controls">
+            <Input allowClear prefix={<SearchOutlined />} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索项目、组织或位置" aria-label="搜索项目" />
+            <Select value={filter} onChange={setFilter} options={projectFilterOptions} aria-label="筛选项目状态" />
+            <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新台账</Button>
+          </div>
         </div>
-        <Table rowKey="id" loading={loading} columns={columns} dataSource={projects} pagination={{ pageSize: 8 }} scroll={{ x: 1050 }} />
+        <Table
+          className="project-ledger-table"
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={filteredProjects}
+          pagination={{ pageSize: 8, hideOnSinglePage: true }}
+          scroll={{ x: 1220 }}
+          locale={{ emptyText: <div className="project-ledger-empty"><strong>没有匹配的项目</strong><span>调整搜索词或状态筛选后再试。</span></div> }}
+        />
       </section>
 
-      <Drawer title="新建立项" open={open} width={480} onClose={() => setOpen(false)}>
+      <Drawer className="project-create-drawer" title="发起新项目" open={open} width={480} onClose={() => setOpen(false)}>
+        <div className="project-create-intro"><span>起点</span><strong>先说清工程事项，后续由访谈逐步补齐。</strong></div>
         <Form form={form} layout="vertical" initialValues={{ projectCategory: "civil_upgrade" }} onFinish={create}>
           <Form.Item name="projectName" label="项目名称" rules={[{ required: true, min: 3, message: "请输入至少三个字的项目名称" }]}>
             <Input size="large" placeholder="例如：地下车库伸缩缝渗漏改造" />
@@ -160,7 +229,7 @@ export default function ProjectsPage() {
           <Form.Item name="projectCategory" label="工程类别" rules={[{ required: true }]}>
             <Select size="large" options={pilotCategoryOptions} />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={saving} block size="large">创建并开始访谈</Button>
+          <Button type="primary" htmlType="submit" loading={saving} block size="large">创建项目并开始访谈</Button>
         </Form>
       </Drawer>
     </div>

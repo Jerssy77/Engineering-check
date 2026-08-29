@@ -1,7 +1,7 @@
 "use client";
 
 import { AIProviderConfigView } from "@property-review/shared";
-import { Alert, Button, Card, Col, Input, List, Popconfirm, Row, Select, Space, Switch, Table, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Col, Collapse, Input, List, Popconfirm, Row, Select, Space, Switch, Table, Tag, Typography, message } from "antd";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -54,7 +54,8 @@ export default function AdminPage() {
   const [aiConfig, setAIConfig] = useState<AIProviderConfigView | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [savingAI, setSavingAI] = useState(false);
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const canResetQuota = session?.user.role === "reviewer";
 
   const load = async () => {
@@ -121,9 +122,8 @@ export default function AdminPage() {
     finally { setSavingAI(false); }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
+  useEffect(() => { if (sessionReady) void load(); }, [sessionReady]);
 
   const resetCityQuota = async (organizationId: string, organizationName: string) => {
     if (!session || !canResetQuota) {
@@ -148,64 +148,95 @@ export default function AdminPage() {
 
   const costColumns = useMemo(
     () => [
-      { title: "城市公司", dataIndex: "organizationName" },
-      { title: "项目名称", dataIndex: "projectName" },
-      { title: "改造类别", dataIndex: "projectCategory", render: (value: string) => labelFromMap(categoryLabels, value) },
-      { title: "位置摘要", dataIndex: "locationSummary" },
-      { title: "当前状态", dataIndex: "status", render: (value: string) => <StatusTag status={value as never} /> },
-      { title: "初版成本", dataIndex: "initialBudget", render: (value: number) => formatCurrency(value) },
-      { title: "当前版成本", dataIndex: "currentBudget", render: (value: number) => formatCurrency(value) },
-      { title: "最终版成本", dataIndex: "finalBudget", render: (value?: number) => (value ? formatCurrency(value) : "-") },
-      { title: "成本差额", dataIndex: "budgetDelta", render: (value: number) => <Typography.Text type={value > 0 ? "danger" : value < 0 ? "success" : undefined}>{formatCurrency(value)}</Typography.Text> },
-      { title: "送审次数", dataIndex: "submissionCount" },
-      { title: "重复风险", dataIndex: "duplicateFlag", render: (value: boolean) => (value ? <Tag color="orange">疑似重复</Tag> : <Tag>无</Tag>) },
-      { title: "最近更新", dataIndex: "updatedAt", render: (value: string) => formatDateTime(value) }
+      { title: "城市公司", dataIndex: "organizationName", width: 130 },
+      { title: "项目名称", dataIndex: "projectName", width: 220 },
+      { title: "改造类别", dataIndex: "projectCategory", width: 110, render: (value: string) => labelFromMap(categoryLabels, value) },
+      { title: "位置摘要", dataIndex: "locationSummary", width: 240, responsive: ["xxl" as const] },
+      { title: "当前状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag status={value as never} /> },
+      { title: "初版成本", dataIndex: "initialBudget", width: 130, responsive: ["xxl" as const], render: (value: number) => formatCurrency(value) },
+      { title: "当前成本", dataIndex: "currentBudget", width: 130, render: (value: number) => formatCurrency(value) },
+      { title: "最终成本", dataIndex: "finalBudget", width: 130, responsive: ["xxl" as const], render: (value?: number) => (value ? formatCurrency(value) : "-") },
+      { title: "成本差额", dataIndex: "budgetDelta", width: 130, render: (value: number) => <Typography.Text type={value > 0 ? "danger" : value < 0 ? "success" : undefined}>{formatCurrency(value)}</Typography.Text> },
+      { title: "送审", dataIndex: "submissionCount", width: 76 },
+      { title: "重复风险", dataIndex: "duplicateFlag", width: 100, render: (value: boolean) => (value ? <Tag color="orange">疑似重复</Tag> : <Tag>无</Tag>) },
+      { title: "最近更新", dataIndex: "updatedAt", width: 160, responsive: ["xxl" as const], render: (value: string) => formatDateTime(value) }
     ],
     []
   );
 
+  const aiAdminPanels = session?.user.role === "admin" ? (
+    <div className="admin-system-stack" id="system-settings">
+      {aiConfig ? (
+        <Collapse
+          className="admin-system-collapse"
+          items={[{
+            key: "model-config",
+            label: "AI 模型配置",
+            extra: (
+              <Space onClick={(event) => event.stopPropagation()}>
+                <Button loading={savingAI} onClick={() => void testAIConfig()}>测试连接</Button>
+                <Button type="primary" loading={savingAI} onClick={() => void saveAIConfig()}>保存</Button>
+              </Space>
+            ),
+            children: (
+              <>
+                <Alert type="info" showIcon message="模型链路：事项识别 → 审查蓝图 → 必要性 → 可行性 → 技术方案" style={{ marginBottom: 18 }} />
+                <Row gutter={[14, 14]}>
+                  <Col xs={24} md={6}><Typography.Text>启用外部模型</Typography.Text><div style={{ marginTop: 9 }}><Switch aria-label="启用外部模型" checked={aiConfig.enabled} onChange={(enabled) => setAIConfig({ ...aiConfig, enabled })} /></div></Col>
+                  <Col xs={24} md={6}><Typography.Text>服务类型</Typography.Text><Select aria-label="服务类型" style={{ width: "100%", marginTop: 6 }} value={aiConfig.provider} onChange={(provider) => setAIConfig({ ...aiConfig, provider })} options={[{ value: "demo", label: "演示规则引擎" }, { value: "openai_compatible", label: "OpenAI 兼容 API" }]} /></Col>
+                  <Col xs={24} md={12}><Typography.Text>API 地址</Typography.Text><Input aria-label="API 地址" style={{ marginTop: 6 }} value={aiConfig.baseUrl} onChange={(event) => setAIConfig({ ...aiConfig, baseUrl: event.target.value })} /></Col>
+                  <Col xs={24} md={6}><Typography.Text>阶段判断</Typography.Text><Input aria-label="阶段判断模型" style={{ marginTop: 6 }} value={aiConfig.stageModel} onChange={(event) => setAIConfig({ ...aiConfig, stageModel: event.target.value })} /></Col>
+                  <Col xs={24} md={6}><Typography.Text>方案与清单</Typography.Text><Input aria-label="方案与清单模型" style={{ marginTop: 6 }} value={aiConfig.schemeModel} onChange={(event) => setAIConfig({ ...aiConfig, schemeModel: event.target.value })} /></Col>
+                  <Col xs={24} md={6}><Typography.Text>最终复核</Typography.Text><Input aria-label="最终复核模型" style={{ marginTop: 6 }} value={aiConfig.decisionModel} onChange={(event) => setAIConfig({ ...aiConfig, decisionModel: event.target.value })} /></Col>
+                  <Col xs={24} md={6}><Typography.Text>动态审查蓝图</Typography.Text><Input aria-label="动态审查蓝图模型" style={{ marginTop: 6 }} value={aiConfig.blueprintModel} onChange={(event) => setAIConfig({ ...aiConfig, blueprintModel: event.target.value })} /></Col>
+                  <Col xs={24} md={6}><Typography.Text>技术路线</Typography.Text><Input aria-label="技术路线模型" style={{ marginTop: 6 }} value={aiConfig.routeModel} onChange={(event) => setAIConfig({ ...aiConfig, routeModel: event.target.value })} /></Col>
+                  <Col xs={24} md={6}><Typography.Text>独立方案复核</Typography.Text><Input aria-label="独立方案复核模型" style={{ marginTop: 6 }} value={aiConfig.reviewModel} onChange={(event) => setAIConfig({ ...aiConfig, reviewModel: event.target.value })} /></Col>
+                  <Col xs={24} md={6}><Typography.Text>相似案例向量</Typography.Text><Input aria-label="相似案例向量模型" style={{ marginTop: 6 }} value={aiConfig.embeddingModel} onChange={(event) => setAIConfig({ ...aiConfig, embeddingModel: event.target.value })} /></Col>
+                  {[{ key: "fingerprint", label: "事项识别" }, { key: "blueprint", label: "审查蓝图" }, { key: "necessity", label: "必要性判断" }, { key: "feasibility", label: "可行性判断" }, { key: "scheme", label: "技术方案" }].map((item) => (
+                    <Col xs={24} md={6} key={item.key}><Typography.Text>{item.label}推理强度</Typography.Text><Select aria-label={`${item.label}推理强度`} style={{ width: "100%", marginTop: 6 }} value={aiConfig.reasoning?.[item.key as keyof NonNullable<AIProviderConfigView["reasoning"]>] ?? "medium"} onChange={(value) => setAIConfig({ ...aiConfig, reasoning: { ...aiConfig.reasoning, [item.key]: value } })} options={[{ value: "low", label: "低" }, { value: "medium", label: "中" }, { value: "high", label: "高" }]} /></Col>
+                  ))}
+                  <Col xs={24}><Typography.Text>API 密钥 {aiConfig.hasApiKey ? "（已配置）" : ""}</Typography.Text><Input.Password aria-label="API 密钥" style={{ marginTop: 6 }} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={aiConfig.hasApiKey ? "留空表示不更换" : "输入后加密保存，页面不会回显"} /></Col>
+                </Row>
+              </>
+            )
+          }]}
+        />
+      ) : null}
+
+      <Collapse
+        className="admin-system-collapse"
+        items={[{
+          key: "ai-usage",
+          label: `AI 用量 · ${dashboard?.aiUsage.date ?? "今日"}`,
+          children: (
+            <>
+              <Row gutter={[14, 14]} style={{ marginBottom: 18 }}>
+                <Col xs={12} md={6}><Typography.Text type="secondary">请求</Typography.Text><Typography.Title level={4}>{dashboard?.aiUsage.totals.requests ?? 0}</Typography.Title></Col>
+                <Col xs={12} md={6}><Typography.Text type="secondary">失败</Typography.Text><Typography.Title level={4}>{dashboard?.aiUsage.totals.failedRequests ?? 0}</Typography.Title></Col>
+                <Col xs={12} md={6}><Typography.Text type="secondary">总 Token</Typography.Text><Typography.Title level={4}>{(dashboard?.aiUsage.totals.totalTokens ?? 0).toLocaleString()}</Typography.Title></Col>
+                <Col xs={12} md={6}><Typography.Text type="secondary">其中推理</Typography.Text><Typography.Title level={4}>{(dashboard?.aiUsage.totals.reasoningTokens ?? 0).toLocaleString()}</Typography.Title></Col>
+              </Row>
+              <Table size="small" pagination={false} rowKey="operation" dataSource={dashboard?.aiUsage.byOperation ?? []} columns={[{ title: "环节", dataIndex: "operation" }, { title: "请求", dataIndex: "requests" }, { title: "失败", dataIndex: "failedRequests" }, { title: "Token", dataIndex: "totalTokens", render: (value: number) => value.toLocaleString() }]} />
+            </>
+          )
+        }]}
+      />
+    </div>
+  ) : null;
+
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page admin-workspace">
       {contextHolder}
-      <Card className="glass-card" styles={{ body: { padding: 28 } }}>
-        <Typography.Title level={2} style={{ margin: 0 }}>{"投资与审批"}</Typography.Title>
+      <Card
+        className="glass-card workspace-intro"
+        extra={session?.user.role === "admin" ? <Button href="#system-settings">系统设置</Button> : null}
+        styles={{ body: { padding: 28 } }}
+      >
+        <span className="workspace-code">CONTROL / INVESTMENT</span>
+        <Typography.Title level={2}>{"投资与审批总览"}</Typography.Title>
       </Card>
 
-      {session?.user.role === "admin" && aiConfig ? (
-        <Card className="glass-card" title="AI 模型配置" extra={<Space><Button loading={savingAI} onClick={() => void testAIConfig()}>测试连接</Button><Button type="primary" loading={savingAI} onClick={() => void saveAIConfig()}>保存</Button></Space>}>
-          <Alert type="info" showIcon message="正常项目调用：事项识别、审查蓝图、必要性、可行性和一次技术方案。最终结论与方案结构校验不再重复调用模型。" style={{ marginBottom: 18 }} />
-          <Row gutter={[14, 14]}>
-            <Col xs={24} md={6}><Typography.Text>启用外部模型</Typography.Text><div style={{ marginTop: 9 }}><Switch checked={aiConfig.enabled} onChange={(enabled) => setAIConfig({ ...aiConfig, enabled })} /></div></Col>
-            <Col xs={24} md={6}><Typography.Text>服务类型</Typography.Text><Select style={{ width: "100%", marginTop: 6 }} value={aiConfig.provider} onChange={(provider) => setAIConfig({ ...aiConfig, provider })} options={[{ value: "demo", label: "演示规则引擎" }, { value: "openai_compatible", label: "OpenAI 兼容 API" }]} /></Col>
-            <Col xs={24} md={12}><Typography.Text>API 地址</Typography.Text><Input style={{ marginTop: 6 }} value={aiConfig.baseUrl} onChange={(event) => setAIConfig({ ...aiConfig, baseUrl: event.target.value })} /></Col>
-            <Col xs={24} md={6}><Typography.Text>阶段判断</Typography.Text><Input style={{ marginTop: 6 }} value={aiConfig.stageModel} onChange={(event) => setAIConfig({ ...aiConfig, stageModel: event.target.value })} /></Col>
-            <Col xs={24} md={6}><Typography.Text>方案与清单</Typography.Text><Input style={{ marginTop: 6 }} value={aiConfig.schemeModel} onChange={(event) => setAIConfig({ ...aiConfig, schemeModel: event.target.value })} /></Col>
-            <Col xs={24} md={6}><Typography.Text>最终复核</Typography.Text><Input style={{ marginTop: 6 }} value={aiConfig.decisionModel} onChange={(event) => setAIConfig({ ...aiConfig, decisionModel: event.target.value })} /></Col>
-            <Col xs={24} md={6}><Typography.Text>动态审查蓝图</Typography.Text><Input style={{ marginTop: 6 }} value={aiConfig.blueprintModel} onChange={(event) => setAIConfig({ ...aiConfig, blueprintModel: event.target.value })} /></Col>
-            <Col xs={24} md={6}><Typography.Text>技术路线</Typography.Text><Input style={{ marginTop: 6 }} value={aiConfig.routeModel} onChange={(event) => setAIConfig({ ...aiConfig, routeModel: event.target.value })} /></Col>
-            <Col xs={24} md={6}><Typography.Text>独立方案复核</Typography.Text><Input style={{ marginTop: 6 }} value={aiConfig.reviewModel} onChange={(event) => setAIConfig({ ...aiConfig, reviewModel: event.target.value })} /></Col>
-            <Col xs={24} md={6}><Typography.Text>相似案例向量</Typography.Text><Input style={{ marginTop: 6 }} value={aiConfig.embeddingModel} onChange={(event) => setAIConfig({ ...aiConfig, embeddingModel: event.target.value })} /></Col>
-            {[{ key: "fingerprint", label: "事项识别" }, { key: "blueprint", label: "审查蓝图" }, { key: "necessity", label: "必要性判断" }, { key: "feasibility", label: "可行性判断" }, { key: "scheme", label: "技术方案" }].map((item) => (
-              <Col xs={24} md={6} key={item.key}><Typography.Text>{item.label}推理强度</Typography.Text><Select style={{ width: "100%", marginTop: 6 }} value={aiConfig.reasoning?.[item.key as keyof NonNullable<AIProviderConfigView["reasoning"]>] ?? "medium"} onChange={(value) => setAIConfig({ ...aiConfig, reasoning: { ...aiConfig.reasoning, [item.key]: value } })} options={[{ value: "low", label: "低" }, { value: "medium", label: "中" }, { value: "high", label: "高" }]} /></Col>
-            ))}
-            <Col xs={24}><Typography.Text>API 密钥 {aiConfig.hasApiKey ? "（已配置）" : ""}</Typography.Text><Input.Password style={{ marginTop: 6 }} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={aiConfig.hasApiKey ? "留空表示不更换" : "输入后加密保存，页面不会回显"} /></Col>
-          </Row>
-        </Card>
-      ) : null}
-
-      {session?.user.role === "admin" ? (
-        <Card className="glass-card" title={`AI 用量 · ${dashboard?.aiUsage.date ?? "今日"}`}>
-          <Row gutter={[14, 14]} style={{ marginBottom: 18 }}>
-            <Col xs={12} md={6}><Typography.Text type="secondary">请求</Typography.Text><Typography.Title level={4}>{dashboard?.aiUsage.totals.requests ?? 0}</Typography.Title></Col>
-            <Col xs={12} md={6}><Typography.Text type="secondary">失败</Typography.Text><Typography.Title level={4}>{dashboard?.aiUsage.totals.failedRequests ?? 0}</Typography.Title></Col>
-            <Col xs={12} md={6}><Typography.Text type="secondary">总 Token</Typography.Text><Typography.Title level={4}>{(dashboard?.aiUsage.totals.totalTokens ?? 0).toLocaleString()}</Typography.Title></Col>
-            <Col xs={12} md={6}><Typography.Text type="secondary">其中推理</Typography.Text><Typography.Title level={4}>{(dashboard?.aiUsage.totals.reasoningTokens ?? 0).toLocaleString()}</Typography.Title></Col>
-          </Row>
-          <Table size="small" pagination={false} rowKey="operation" dataSource={dashboard?.aiUsage.byOperation ?? []} columns={[{ title: "环节", dataIndex: "operation" }, { title: "请求", dataIndex: "requests" }, { title: "失败", dataIndex: "failedRequests" }, { title: "Token", dataIndex: "totalTokens", render: (value: number) => value.toLocaleString() }]} />
-        </Card>
-      ) : null}
-
-      <Row gutter={[16, 16]}>
+      <Row gutter={[16, 16]} className="admin-metric-grid">
         {[
           ["当前总投资", dashboard?.investmentSummary.totalInvestment ?? 0],
           ["已批准金额", dashboard?.investmentSummary.approvedInvestment ?? 0],
@@ -214,8 +245,8 @@ export default function AdminPage() {
           ["版本预算净变化", dashboard?.investmentSummary.budgetChange ?? 0],
           ["重复改造涉及金额", dashboard?.investmentSummary.duplicateInvestment ?? 0]
         ].map(([label, value]) => (
-          <Col xs={24} sm={12} xl={8} key={String(label)}>
-            <Card className="glass-card"><Typography.Text type="secondary">{label}</Typography.Text><Typography.Title level={3} style={{ marginBottom: 0 }}>{formatCurrency(Number(value))}</Typography.Title></Card>
+          <Col xs={12} sm={12} xl={8} key={String(label)}>
+            <Card className="glass-card admin-metric-card"><Typography.Text type="secondary">{label}</Typography.Text><Typography.Title level={3} style={{ marginBottom: 0 }}>{formatCurrency(Number(value))}</Typography.Title></Card>
           </Col>
         ))}
       </Row>
@@ -244,7 +275,7 @@ export default function AdminPage() {
 
       <Card className="glass-card" loading={loading} styles={{ body: { padding: 22 } }}>
         <Typography.Title level={4}>{"改造项目清单"}</Typography.Title>
-        <Table rowKey="projectId" pagination={{ pageSize: 6 }} dataSource={dashboard?.projectCostBoard ?? []} columns={costColumns} scroll={{ x: 1500 }} />
+        <Table rowKey="projectId" pagination={{ pageSize: 6 }} dataSource={dashboard?.projectCostBoard ?? []} columns={costColumns} scroll={{ x: "max-content" }} />
       </Card>
 
       <Row gutter={[20, 20]}>
@@ -253,7 +284,7 @@ export default function AdminPage() {
             <Typography.Title level={4}>{"城市公司额度使用"}</Typography.Title>
             <Table
               rowKey="organizationId"
-              pagination={false}
+              pagination={{ pageSize: 6, showSizeChanger: false }}
               dataSource={quotaBoard?.organizations ?? []}
               columns={[
                 { title: "城市公司", dataIndex: "organizationName" },
@@ -279,7 +310,7 @@ export default function AdminPage() {
                         </Button>
                       </Popconfirm>
                     ) : (
-                      <Typography.Text type="secondary">仅终审人可操作</Typography.Text>
+                      <Tag>只读</Tag>
                     )
                 }
               ]}
@@ -294,11 +325,13 @@ export default function AdminPage() {
         </Col>
       </Row>
 
+      {aiAdminPanels}
+
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>
           <Card className="glass-card" loading={loading} styles={{ body: { padding: 22 } }}>
             <Typography.Title level={4}>{"账号列表"}</Typography.Title>
-            <Table rowKey="id" pagination={false} scroll={{ x: 700 }} dataSource={dashboard?.users ?? []} columns={[{ title: "姓名", dataIndex: "displayName" }, { title: "用户名", dataIndex: "username" }, { title: "角色", dataIndex: "role", render: (value: string) => labelFromMap(roleLabels, value) }, { title: "所属组织", dataIndex: "organizationId", render: (value: string) => dashboard?.organizations.find((item) => item.id === value)?.name ?? value }]} />
+            <Table rowKey="id" pagination={{ pageSize: 6, showSizeChanger: false }} scroll={{ x: 700 }} dataSource={dashboard?.users ?? []} columns={[{ title: "姓名", dataIndex: "displayName" }, { title: "用户名", dataIndex: "username" }, { title: "角色", dataIndex: "role", render: (value: string) => labelFromMap(roleLabels, value) }, { title: "所属组织", dataIndex: "organizationId", render: (value: string) => dashboard?.organizations.find((item) => item.id === value)?.name ?? value }]} />
           </Card>
         </Col>
         <Col xs={24} xl={12}>
@@ -313,7 +346,7 @@ export default function AdminPage() {
         <Col xs={24} xl={12}>
           <Card className="glass-card" loading={loading} styles={{ body: { padding: 22 } }}>
             <Typography.Title level={4}>{"组织架构"}</Typography.Title>
-            <List dataSource={dashboard?.organizations ?? []} renderItem={(item) => <List.Item><List.Item.Meta title={item.name} description={labelFromMap(organizationKindLabels, item.kind)} /></List.Item>} />
+            <List className="organization-grid" grid={{ gutter: 12, xs: 1, sm: 2 }} dataSource={dashboard?.organizations ?? []} renderItem={(item) => <List.Item><List.Item.Meta title={item.name} description={labelFromMap(organizationKindLabels, item.kind)} /></List.Item>} />
           </Card>
         </Col>
         <Col xs={24} xl={12}>

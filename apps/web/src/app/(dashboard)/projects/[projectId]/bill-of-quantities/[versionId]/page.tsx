@@ -105,7 +105,8 @@ export default function BillOfQuantitiesPage({
   const [messageApi, contextHolder] = message.useMessage();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<BoqResponse | null>(null);
-  const session = getSession();
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const load = async () => {
     if (!session) {
@@ -128,9 +129,10 @@ export default function BillOfQuantitiesPage({
     }
   };
 
+  useEffect(() => { setSession(getSession()); setSessionReady(true); }, []);
   useEffect(() => {
-    void load();
-  }, [routeParams.projectId, routeParams.versionId]);
+    if (sessionReady) void load();
+  }, [routeParams.projectId, routeParams.versionId, sessionReady]);
 
   const downloadAsset = async (path: string, fileName: string) => {
     try {
@@ -194,7 +196,7 @@ export default function BillOfQuantitiesPage({
   ];
 
   return (
-    <div className="section-grid">
+    <div className="section-grid workspace-page document-workspace boq-workspace">
       {contextHolder}
 
       <section className="glass-card brand-frame document-cover">
@@ -204,11 +206,6 @@ export default function BillOfQuantitiesPage({
             <Typography.Title className="hero-title">
               {report?.project.title ?? "工程量清单"}
             </Typography.Title>
-            <Typography.Paragraph style={{ color: "var(--ink-soft)", marginBottom: 0, maxWidth: 760 }}>
-              {report?.sourceMode === "upload"
-                ? "当前版本采用上传 Excel 清单作为正式工程量清单，页面展示解析摘要、分组汇总和关键明细，Excel 下载将返回用户原始文件。"
-                : "以工程项与其他费用两类清晰展开当前版本的预算矩阵，支持直接预览、导出 PDF 和导出 Excel，方便后续执行与采买衔接。"}
-            </Typography.Paragraph>
           </Space>
 
           <div className="summary-grid">
